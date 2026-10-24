@@ -1,6 +1,6 @@
 # User Workflow
 
-This document describes how a user goes from an empty directory to a connected, assessed, and policy-controlled MCP estate.
+This document describes how a user goes from an empty directory to a discovered and assessed MCP estate with reviewed remediation proposals. Governed invocation arrives in 0.2 and chat in 0.3.
 
 The command names describe the intended product experience. They become executable incrementally as the implementation milestones land.
 
@@ -130,14 +130,14 @@ MOO stores the reference, not its value:
 }
 ```
 
-Before writing, MOO displays a diff. `mooctl server test <id>` performs protocol negotiation and discovery without modifying configuration.
+Before writing, the add wizard can test its in-memory draft without first saving it. After saving, `mooctl server test <id>` performs the same connection check without modifying configuration.
 
 ## 3. Find and import existing MCP configuration
 
 Many users already have servers configured in clients such as Claude, Codex, Cursor, or VS Code. MOO should offer consent-based detection through explicit client adapters rather than asking users to find and copy entries by hand.
 
 ```text
-mooctl detect
+mooctl detect --client claude
 ```
 
 Example interaction:
@@ -170,13 +170,26 @@ Found 4 configured servers:
 Import selected servers? Yes
 ```
 
-The equivalent scriptable command may be:
+MOO then asks how to manage the selection:
 
 ```text
-mooctl import --detected
+1. Link — re-read this client configuration and detect future changes
+2. Import — copy reviewed definitions into this MOO workspace
+3. Inspect only — build a temporary inventory without saving
 ```
 
-It must still require an explicit client scope and provide preview or dry-run behavior. An explicitly selected configuration file remains supported:
+Each retained server records source provenance and a management mode of `linked`, `imported`, or `moo-managed`. Linked sources are never modified by MOO.
+
+If equivalent-looking definitions appear in multiple clients, MOO presents them as possible duplicates with their provenance. It never silently merges them. A linked-source change is reported as drift and must be reviewed before it can affect later governed execution.
+
+For a direct, scriptable import, use an explicit client adapter:
+
+```text
+mooctl import --from claude --dry-run
+mooctl import --from claude
+```
+
+`mooctl detect --client claude` produces ephemeral candidates for the current command or interactive session; it does not create a hidden persistent detection database. An explicitly selected configuration file remains supported:
 
 ```text
 mooctl import --from-file ./existing-mcp-config.json
@@ -189,8 +202,8 @@ Import behavior:
 3. Parse only supported server fields.
 4. Show unsupported fields and conflicts.
 5. Preserve environment-variable or credential-provider references where possible.
-6. Never resolve or copy credential values.
-7. Mark connections that require a new sign-in or missing environment variable.
+6. If the authorized source contains a literal credential, keep it in memory only while parsing and never log, display, snapshot, propose, or persist it.
+7. Mark connections that require credential setup or a missing environment variable.
 8. Preview the resulting MOO configuration and allow individual server selection.
 9. Test selected servers only with explicit approval, because stdio tests execute local commands.
 10. Write only after confirmation.
@@ -202,10 +215,10 @@ After import, MOO offers to test the selected connections and gives actionable r
 ```text
 filesystem   connected        11 tools
 github       connected        26 tools
-company-crm  sign-in required
+company-crm  credential setup required
 
 Next:
-  1. Sign in to company-crm
+  1. Configure credentials for company-crm
   2. Discover connected servers
   3. Add another server
 ```
@@ -216,7 +229,7 @@ Next:
 mooctl discover
 ```
 
-MOO connects to each configured server, negotiates the supported protocol era, obtains server discovery metadata when available, lists tools, normalizes capabilities, and saves a snapshot.
+MOO asks the official SDK to negotiate the supported protocol era, obtains server discovery metadata when available, lists tools, normalizes capabilities, and saves a snapshot.
 
 Example:
 
@@ -251,19 +264,19 @@ Example finding:
 ```text
 HIGH  crm.delete_customer
 
-Potentially destructive capability has no matching execution policy.
+Potentially destructive capability has no explicit tool-specific disposition.
 
 Evidence:
 - Upstream tool name contains "delete".
 - Upstream destructiveHint is true.
-- MOO found no matching policy rule.
+- The capability inherits MOO's default deny decision and has no explicit tool-specific disposition.
 
-Recommended layer: enforceable policy
-Recommendation: add a deny or require-confirmation rule.
+Recommended layer: policy proposal for release 0.2
+Recommendation: explicitly keep denied or propose confirmation for a future governed invocation.
 Confidence: high
 ```
 
-The finding does not prove the implementation is unsafe. It proves that a capability declared as destructive currently lacks a matching MOO policy.
+The finding does not prove the implementation is unsafe or currently executable. Default deny already blocks it. This is a governance-completeness finding showing that a capability declared as destructive lacks an explicit tool-specific disposition.
 
 ## 6. Turn a finding into a reviewed remediation
 
@@ -290,26 +303,22 @@ MOO generates a proposal rather than silently editing configuration:
 }
 ```
 
-The user reviews and tests it:
+In 0.1, the user reviews the proposal as an artifact. MOO explains its expected effect but does not claim runtime enforcement:
 
 ```text
-mooctl policy test --proposal .moo/proposals/finding-123.json
-```
-
-Example test output:
-
-```text
+Expected 0.2 policy effect:
 crm.search_customer  -> deny (default policy)
 crm.delete_customer  -> require_confirmation (proposed rule)
 ```
 
-The user can then apply the proposal to MOO-owned configuration:
+Beginning in 0.2, the user can test and apply the proposal to MOO-owned policy configuration:
 
 ```text
+mooctl policy test --proposal .moo/proposals/finding-123.json
 mooctl policy apply --proposal .moo/proposals/finding-123.json
 ```
 
-Apply must show a diff and require confirmation. It does not alter the upstream MCP server.
+Apply must show a diff and require confirmation. It does not alter the upstream MCP server. Until 0.2 exists, a policy proposal is evidence of recommended intent, not an enforced control.
 
 ## 7. Instructions, overlays, and policies
 
@@ -342,7 +351,7 @@ MOO preserves the original upstream metadata next to this overlay. It must never
 
 Natural-language instructions can help a model choose correctly, but a model can misunderstand or ignore them. Therefore, instructions cannot implement deny, approval, credential, or data-access controls.
 
-## 8. Invoke a capability
+## 8. Invoke a capability — planned for 0.2
 
 ```text
 mooctl call crm.search_customer --args '{"email":"person@example.com"}'
@@ -364,7 +373,7 @@ This confirmation is a MOO gateway control. It does not guarantee that a remote 
 
 For `mcp-tool-control`, MOO's allow or confirmation decision does not replace its trusted-host approval. The trusted approval controller remains unavailable to model-facing clients and MOO chat.
 
-## 9. Explore through chat
+## 9. Explore through chat — planned for 0.3
 
 ```text
 mooctl chat
@@ -391,6 +400,17 @@ mooctl assess
 ```
 
 MOO reports added, removed, and changed capabilities. Existing overlays and policies are checked against the new fingerprints, and stale rules or suppressions are surfaced for review.
+
+## Estate visibility vocabulary
+
+MOO must label evidence precisely:
+
+- **Configured:** found in a supported source or MOO configuration.
+- **Reachable:** successfully contacted and discovered during a specific run.
+- **Governed:** an invocation was routed through MOO policy, beginning in 0.2.
+- **Observed usage:** an invocation was seen through MOO or an explicit telemetry integration.
+
+Finding a server in Claude, Codex, Cursor, or another client does not prove that anyone uses it. MOO must not claim organization-wide usage visibility unless it has corresponding invocation or telemetry evidence.
 
 ## Protocol basis
 

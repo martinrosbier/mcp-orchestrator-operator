@@ -48,7 +48,7 @@ Assessment recommendations should distinguish:
 
 Where supported, MOO should generate a correlation identifier and propagate it through the public invocation request. MOO records its policy decision and routing evidence. `mcp-tool-control` records its trusted approval and execution evidence. Reports may correlate the two records but must not imply that one replaces the other.
 
-## Initial integration acceptance criteria
+## Planned 0.2 integration acceptance criteria
 
 - MOO can discover and assess the public tools without privileged controller access.
 - A plan or inspection operation can be routed under MOO policy.
