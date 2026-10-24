@@ -23,8 +23,10 @@ The first slice should prove this path:
 ```text
 mooctl init
     -> find existing servers or paste a new server
-    -> mooctl server add or mooctl detect --client <client>
-    -> mooctl server test <server>
+    -> mooctl server add
+       or mooctl source detect --client <client>
+    -> save, link, import, or directly test the selected draft/candidate
+    -> mooctl server test <saved-server>
     -> mooctl discover
     -> normalized tool list
 ```
@@ -34,10 +36,12 @@ Recommended behavior:
 1. `mooctl init` previews and creates a local `.moo/` workspace.
 2. The initializer offers to detect servers in a supported client or accept a pasted command, package invocation, URL, or configuration snippet.
 3. `mooctl server add` recognizes pasted input and asks only for missing fields such as name and environment-variable references.
-4. MOO displays the resulting definition with secret values redacted and asks for confirmation.
-5. `mooctl server test` starts the server with a timeout, initializes an MCP session, reports protocol/server information, and exits cleanly.
-6. `mooctl discover` retrieves tools and prints their original names, descriptions, schemas, and provenance.
-7. An integration test runs this flow against one deliberately small local demo server.
+4. MOO parses executable and arguments separately, shows working-directory and package-download implications, and never invokes a shell by default.
+5. MOO displays the resulting definition with secret values redacted and asks for confirmation to save it.
+6. A separate confirmation authorizes package download or process execution for testing.
+7. `mooctl server test` establishes the SDK-supported MCP lifecycle with a timeout, reports protocol/server information, and exits cleanly.
+8. `mooctl discover` retrieves tools and prints their original names, descriptions, schemas, and provenance.
+9. An integration test runs this flow against one deliberately small local demo server.
 
 Acceptance criteria:
 
@@ -51,13 +55,15 @@ Acceptance criteria:
 Implement:
 
 ```text
-mooctl detect --client <client>
-mooctl import --from <client> --dry-run
-mooctl import --from <client>
-mooctl import --from-file <explicit-path>
+mooctl source detect --client <client>
+mooctl source link --from <client> --dry-run
+mooctl source link --from <client>
+mooctl source import --from <client> --dry-run
+mooctl source import --from <client>
+mooctl source import --file <explicit-path>
 ```
 
-The adapter must disclose the selected client's known locations before reading, identify its supported format, validate every entry, show unsupported fields, redact secret values, detect naming conflicts, preview the exact additions, and write only after confirmation. Detection candidates are ephemeral unless the user links or imports them. It must not perform a broad filesystem scan, inspect unselected clients, or import all detected configurations. Testing a detected stdio command requires separate confirmation.
+The adapter must disclose the selected client's known locations before reading, identify its supported format and base directory, validate every entry, show unsupported fields, redact secret values, detect naming conflicts, preview normalized paths and exact additions, and write only after confirmation. Detection candidates are ephemeral unless the user links or imports them. It must not perform a broad filesystem scan, inspect unselected clients, or import all detected configurations. Testing a detected stdio or package-manager command requires separate confirmation.
 
 ## 4. Close the assessment-to-remediation loop
 
@@ -86,6 +92,8 @@ Run the complete 0.1 journey from a clean checkout:
 - produce three to five evidence-backed findings;
 - generate and review one upstream, overlay, or policy remediation proposal;
 - produce terminal and JSON reports.
+
+The test must prove that different observation timestamps for identical discovered content produce the same canonical snapshot fingerprint.
 
 Do not make governed invocation or chat a condition for completing 0.1.
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-MOO may connect to `mcp-tool-control` as an optional MCP server. The integration demonstrates how estate-wide discovery, assessment, routing, and governance compose with an executor that owns stronger transactional safeguards for local filesystem writes.
+Beginning no earlier than release 0.2, MOO may connect to `mcp-tool-control` as an optional MCP server. The integration demonstrates how estate-wide discovery, assessment, routing, and governance compose with an executor that owns stronger transactional safeguards for local filesystem writes.
 
 The products remain independently useful:
 

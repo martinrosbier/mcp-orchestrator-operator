@@ -18,9 +18,9 @@ The guided initializer should:
 
 1. Explain which local files it will create.
 2. Ask whether the workspace configuration may be committed to Git.
-3. Create `moo.config.json` with no embedded credentials.
-4. Create `.moo/` for generated snapshots, reports, proposals, and local state.
-5. Add recommended ignored local-state paths to `.gitignore` only after preview and confirmation.
+3. Create `moo.config.json` with no embedded credentials or active runtime policy.
+4. Create explicit locations for reviewable project artifacts and ignored runtime state.
+5. Add only cache, run, and temporary paths to `.gitignore`, after preview and confirmation.
 6. Offer to find already configured MCP servers, paste a new server, import a selected file, or configure one manually.
 
 Example generated configuration:
@@ -29,12 +29,9 @@ Example generated configuration:
 {
   "$schema": "https://example.invalid/moo/config.schema.json",
   "version": 1,
+  "sources": {},
   "servers": {},
-  "overlays": {},
-  "policies": {
-    "defaultDecision": "deny",
-    "rules": []
-  }
+  "overlays": {}
 }
 ```
 
@@ -71,11 +68,16 @@ Name: example
 Command: npx
 Arguments: -y @company/example-mcp
 
-This command will execute local code.
-Review and test it? Yes
+Executable: npx
+Arguments: ["-y", "@company/example-mcp"]
+Working directory: C:\path\to\company-mcp
+Network/install behavior: this package-manager command may download code
+
+Save this definition? Yes
+Download or execute it for a connection test? No
 ```
 
-MOO converts recognized input into a normalized definition, displays it, and asks for confirmation. If the input is ambiguous, MOO asks only for the missing fields instead of exposing the complete configuration schema.
+MOO converts recognized input into an executable and argument array without passing it through a shell, displays the normalized definition, and asks for confirmation. Downloading packages or starting the process requires a separate confirmation. If the input is ambiguous, MOO asks only for the missing fields instead of exposing the complete configuration schema.
 
 Example interaction:
 
@@ -137,7 +139,7 @@ Before writing, the add wizard can test its in-memory draft without first saving
 Many users already have servers configured in clients such as Claude, Codex, Cursor, or VS Code. MOO should offer consent-based detection through explicit client adapters rather than asking users to find and copy entries by hand.
 
 ```text
-mooctl detect --client claude
+mooctl source detect --client claude
 ```
 
 Example interaction:
@@ -167,7 +169,7 @@ Found 4 configured servers:
   [x] company-crm   Codex     streamable-http
   [ ] postgres      Claude    missing POSTGRES_URL
 
-Import selected servers? Yes
+Continue with selected servers? Yes
 ```
 
 MOO then asks how to manage the selection:
@@ -178,21 +180,22 @@ MOO then asks how to manage the selection:
 3. Inspect only — build a temporary inventory without saving
 ```
 
-Each retained server records source provenance and a management mode of `linked`, `imported`, or `moo-managed`. Linked sources are never modified by MOO.
+Each retained server records source provenance and a management mode of `linked`, `imported`, or `moo-managed`. Linked sources are never modified by MOO. Removing a linked entry detaches it from the MOO workspace; it does not delete or change the source client's configuration.
 
-If equivalent-looking definitions appear in multiple clients, MOO presents them as possible duplicates with their provenance. It never silently merges them. A linked-source change is reported as drift and must be reviewed before it can affect later governed execution.
+If equivalent-looking definitions appear in multiple clients, MOO presents them as possible duplicates with their provenance. It never silently merges them. Source-definition drift is reported separately from capability drift. A linked change to a command, URL, working directory, or credential reference must be reviewed before MOO executes or adopts it.
 
 For a direct, scriptable import, use an explicit client adapter:
 
 ```text
-mooctl import --from claude --dry-run
-mooctl import --from claude
+mooctl source import --from claude --dry-run
+mooctl source import --from claude
+mooctl source link --from claude
 ```
 
-`mooctl detect --client claude` produces ephemeral candidates for the current command or interactive session; it does not create a hidden persistent detection database. An explicitly selected configuration file remains supported:
+`mooctl source detect --client claude` produces ephemeral candidates for the current command or interactive session; it does not create a hidden persistent detection database. The user must link, import, inspect, or directly test a candidate before the session ends. An explicitly selected configuration file remains supported:
 
 ```text
-mooctl import --from-file ./existing-mcp-config.json
+mooctl source import --file ./existing-mcp-config.json
 ```
 
 Import behavior:
@@ -205,12 +208,13 @@ Import behavior:
 6. If the authorized source contains a literal credential, keep it in memory only while parsing and never log, display, snapshot, propose, or persist it.
 7. Mark connections that require credential setup or a missing environment variable.
 8. Preview the resulting MOO configuration and allow individual server selection.
-9. Test selected servers only with explicit approval, because stdio tests execute local commands.
-10. Write only after confirmation.
+9. Resolve relative commands and working directories against the source configuration's base directory and show the normalized result.
+10. Test selected servers only with separate explicit approval, because stdio tests may download or execute code.
+11. Write only after confirmation.
 
-Convenience commands such as `mooctl import --from codex` or `--from claude` may be added after their paths and formats are verified. MOO must not broadly scan a home directory, inspect unselected clients, import every detected server, or change another client's configuration silently.
+Client adapters such as `mooctl source import --from codex` or `--from claude` may be added after their paths, base-directory behavior, and formats are verified. MOO must not broadly scan a home directory, inspect unselected clients, import every detected server, or change another client's configuration silently.
 
-After import, MOO offers to test the selected connections and gives actionable results:
+After linking or importing, MOO offers to test the selected connections and gives actionable results:
 
 ```text
 filesystem   connected        11 tools
@@ -246,7 +250,9 @@ documents
   search_documents
   read_document
 
-Snapshot: .moo/snapshots/2026-10-24T15-30-00Z.json
+Catalog fingerprint: sha256:catalog-example
+Snapshot: .moo/snapshots/sha256-catalog-example.json
+Observation: .moo/runs/2026-10-24T15-30-00Z.json
 ```
 
 MOO retains server-provided natural-language instructions as declared metadata with provenance. Instructions are untrusted guidance and never authorize execution.
@@ -255,28 +261,32 @@ MOO retains server-provided natural-language instructions as declared metadata w
 
 ```text
 mooctl assess
-mooctl findings
+mooctl finding list
 mooctl finding show finding-123
 ```
 
 Example finding:
 
 ```text
-HIGH  crm.delete_customer
+MEDIUM  crm.delete_customer
+
+Kind: heuristic
+Profile: default
 
 Potentially destructive capability has no explicit tool-specific disposition.
 
 Evidence:
 - Upstream tool name contains "delete".
 - Upstream destructiveHint is true.
-- The capability inherits MOO's default deny decision and has no explicit tool-specific disposition.
+- The name and untrusted annotation suggest destructive behavior.
+- Release 0.1 has no runtime invocation path; the proposal describes a future policy posture.
 
 Recommended layer: policy proposal for release 0.2
-Recommendation: explicitly keep denied or propose confirmation for a future governed invocation.
+Recommendation: propose explicit deny or confirmation for a future governed invocation.
 Confidence: high
 ```
 
-The finding does not prove the implementation is unsafe or currently executable. Default deny already blocks it. This is a governance-completeness finding showing that a capability declared as destructive lacks an explicit tool-specific disposition.
+The finding does not prove the implementation is unsafe, destructive, or currently executable. Release 0.1 does not route tool calls, so this is a heuristic governance finding about the posture to adopt when governed invocation is introduced.
 
 ## 6. Turn a finding into a reviewed remediation
 
@@ -291,6 +301,9 @@ MOO generates a proposal rather than silently editing configuration:
   "proposalVersion": 1,
   "sourceFinding": "finding-123",
   "target": "crm.delete_customer",
+  "sourceServer": "crm",
+  "basedOnCapabilityFingerprint": "sha256:capability-example",
+  "basedOnSchemaFingerprint": "sha256:schema-example",
   "layer": "policy",
   "proposedRule": {
     "id": "confirm-crm-delete-customer",
@@ -306,16 +319,16 @@ MOO generates a proposal rather than silently editing configuration:
 In 0.1, the user reviews the proposal as an artifact. MOO explains its expected effect but does not claim runtime enforcement:
 
 ```text
-Expected 0.2 policy effect:
-crm.search_customer  -> deny (default policy)
+Expected 0.2 policy effect if the proposed default-deny model is adopted:
+crm.search_customer  -> deny (proposed default policy)
 crm.delete_customer  -> require_confirmation (proposed rule)
 ```
 
 Beginning in 0.2, the user can test and apply the proposal to MOO-owned policy configuration:
 
 ```text
-mooctl policy test --proposal .moo/proposals/finding-123.json
-mooctl policy apply --proposal .moo/proposals/finding-123.json
+mooctl policy test --proposal moo/proposals/finding-123.json
+mooctl policy apply --proposal moo/proposals/finding-123.json
 ```
 
 Apply must show a diff and require confirmation. It does not alter the upstream MCP server. Until 0.2 exists, a policy proposal is evidence of recommended intent, not an enforced control.
@@ -329,7 +342,7 @@ These mechanisms solve different problems.
 | Server instructions | Help a model use a server effectively | No | Upstream MCP server |
 | Tool descriptions and annotations | Describe inputs, behavior, and advisory properties | No | Upstream MCP server |
 | MOO organization overlay | Add ownership, classification, aliases, and local guidance | No | Organization |
-| MOO policy | Decide visibility and invocation | Yes inside MOO | Organization |
+| MOO policy | Decide visibility and invocation | Yes inside MOO beginning in 0.2 | Organization |
 | Trusted execution approval | Authorize an exact controlled operation | Yes for supported executor | Trusted host, such as `mcp-tool-control` integration |
 
 An organization overlay might look like:
@@ -354,7 +367,7 @@ Natural-language instructions can help a model choose correctly, but a model can
 ## 8. Invoke a capability — planned for 0.2
 
 ```text
-mooctl call crm.search_customer --args '{"email":"person@example.com"}'
+mooctl tool call crm.search_customer --args '{"email":"person@example.com"}'
 ```
 
 MOO resolves the capability, validates arguments, evaluates policy, routes the call, returns the upstream result, and records redacted execution evidence.
@@ -379,7 +392,7 @@ For `mcp-tool-control`, MOO's allow or confirmation decision does not replace it
 mooctl chat
 ```
 
-Chat can explain catalog records, findings, diffs, overlays, and policy decisions. It can request an invocation, but all calls use the same validation and policy pipeline as `mooctl call`.
+Chat can explain catalog records, findings, diffs, overlays, and policy decisions. It can request an invocation, but all calls use the same validation and policy pipeline as `mooctl tool call`.
 
 Example:
 
@@ -395,7 +408,7 @@ is required. Its server instruction is advisory and cannot override policy.
 
 ```text
 mooctl discover
-mooctl diff
+mooctl snapshot diff
 mooctl assess
 ```
 
@@ -411,6 +424,22 @@ MOO must label evidence precisely:
 - **Observed usage:** an invocation was seen through MOO or an explicit telemetry integration.
 
 Finding a server in Claude, Codex, Cursor, or another client does not prove that anyone uses it. MOO must not claim organization-wide usage visibility unless it has corresponding invocation or telemetry evidence.
+
+## Project and runtime state
+
+MOO separates reviewable configuration from disposable local state:
+
+```text
+moo.config.json       committed project configuration
+moo.profile.json      optionally committed quality profile
+moo/proposals/        reviewable proposals, optionally committed
+.moo/cache/           ignored discovery cache
+.moo/runs/            ignored observation records and diagnostics
+.moo/reports/         ignored by default; export explicitly for CI
+.moo/snapshots/       configurable retention; canonical content is deterministic
+```
+
+Canonical catalog snapshots contain no timestamps or run IDs. A separate discovery observation records when the run occurred, which servers were reachable, timing, failures, and the referenced canonical snapshot fingerprint.
 
 ## Protocol basis
 
