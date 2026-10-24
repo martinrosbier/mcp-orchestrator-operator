@@ -24,13 +24,13 @@ The product has three pillars:
 Organizations adopting MCP accumulate servers and tools created by different teams and vendors. The resulting capability estate may contain:
 
 - Duplicated or overlapping tools.
-- Inconsistent names, descriptions, schemas, and error behavior.
+- Inconsistent names, descriptions, schemas, and declared error contracts.
 - Missing ownership and lifecycle information.
 - Misleading or absent safety annotations.
 - Excessively broad inputs or permissions.
-- Untracked schema and behavior changes.
+- Untracked schema and declared-contract changes, plus runtime behavior changes where invocation or telemetry evidence is available.
 - Tools exposed to agents that should not see or invoke them.
-- Unknown usage, reliability, latency, and operational value.
+- Unknown usage, reliability, latency, and operational value when runtime evidence is available.
 - Multiple gateways or clients without a common evidence model.
 
 Existing gateways increasingly solve routing, authentication, allowlisting, and audit logging. MOO's initial differentiation is capability intelligence: determining whether the capabilities behind those gateways are coherent, well-designed, appropriately governed, changing safely, and useful in practice.
@@ -78,6 +78,9 @@ The system must:
 - Inspect only disclosed, documented configuration locations for clients selected by the user; never perform a silent or broad filesystem scan.
 - Provide `mooctl server add`, `mooctl server test`, `mooctl server list`, and `mooctl server remove` workflows.
 - Let users paste a command, package invocation, remote URL, or configuration snippet and convert recognized input into a reviewed server definition.
+- Parse pasted commands into an executable and argument array without invoking a shell by default.
+- Show the exact executable, arguments, working directory, and known package-download or network implications before any test.
+- Require a separate confirmation before downloading packages, starting a process, or testing an imported stdio command.
 - Let advanced users add stdio servers by command and arguments and HTTP servers by URL, protocol era, and secret references.
 - Preview and validate configuration changes before writing them.
 - Import server definitions from a user-selected MCP client configuration file through explicit, format-aware adapters. Imports must be previewed and must not copy resolved credentials.
@@ -85,6 +88,10 @@ The system must:
 - Require confirmation before testing a detected stdio server because doing so executes its configured local command.
 - Support three source modes: linked configuration that can be re-read for drift, imported definitions copied into MOO, and temporary inspect-only discovery.
 - Record source provenance and management mode for every server definition.
+- Keep sensitive or machine-specific source paths out of portable reports and committed configuration; store a redacted or adapter-relative locator where possible.
+- Resolve relative commands and working directories against the source configuration's documented base directory before previewing an import.
+- Report source-definition drift separately from discovered capability drift. A linked change to a command, URL, working directory, or credential reference must be reviewed before MOO executes or adopts it.
+- Treat removal according to management mode: detach linked definitions, delete only MOO-managed or imported definitions, and never edit an external client configuration.
 - Load server definitions from a version-controlled YAML or JSON file.
 - Connect to multiple MCP servers using the official TypeScript SDK.
 - Support local stdio and Streamable HTTP transports.
@@ -104,7 +111,8 @@ The system must:
 
 - Run deterministic, independently testable assessment rules.
 - Distinguish protocol failures, confirmed findings, heuristic warnings, and organization-specific requirements.
-- Assess descriptions, schemas, annotations, naming, ownership, risky parameters, outputs, and common operational weaknesses.
+- Assess descriptions, schemas, annotations, naming, ownership, risky parameters, declared output schemas, and common operational weaknesses.
+- In 0.1, assess only declared contracts, configuration, reachability, and discovery evidence. Runtime behavior, result quality, reliability, and latency require later invocation or telemetry evidence.
 - Detect exact duplicates and structural similarity candidates.
 - Present semantic overlap only as a review candidate, never as confirmed equivalence.
 - Apply a version-controlled organizational quality profile.
@@ -150,6 +158,8 @@ mooctl remediation propose <finding-id>
 
 `remediation propose` must explain which layer is recommended and why. In 0.1, proposals are reviewable artifacts and are not runtime enforcement. Policy testing and application arrive with governed invocation in 0.2. No remediation command may modify an upstream server automatically.
 
+Every proposal must record the source server plus the capability and schema fingerprints on which it was based. Testing or applying a stale proposal in 0.2 must fail closed and require regeneration or an explicit reviewed migration.
+
 ### 5.5 Planned conversational exploration — 0.3
 
 Users should be able to ask:
@@ -175,7 +185,6 @@ An LLM provider must be optional. Discovery, assessment, reporting, policy, and 
 - Environment and tags.
 - Transport configuration with secret references, never resolved values.
 - Discovered protocol and capability metadata.
-- Discovery timestamp and outcome.
 - Configuration source, source adapter, and management mode: linked, imported, or MOO-managed.
 - Last observed source fingerprint for linked-source drift detection.
 
@@ -187,11 +196,23 @@ An LLM provider must be optional. Discovery, assessment, reporting, policy, and 
 - Normalized input schema.
 - Output schema when supplied.
 - Source server and provenance.
-- Discovery timestamps.
-- Metadata, schema, and semantic fingerprints.
+- Metadata, schema, and structural fingerprints. A deterministic hash must not be described as semantic analysis.
 - Ownership and organization-supplied classifications.
 
 Logical identity and version fingerprints must remain separate. A description edit must not create a new logical capability, while an input-schema change must remain detectable.
+
+### Catalog snapshot
+
+- Canonical server and capability content serialized deterministically.
+- No timestamps, run IDs, latency, or transient failure data in the fingerprinted content.
+- Separate metadata, schema, and complete-record fingerprints with documented canonicalization.
+
+### Discovery observation
+
+- Observation timestamp and run identifier.
+- Per-server reachability, protocol era, duration, and failure classification.
+- Reference to the deterministic catalog snapshot fingerprint.
+- Stored outside the canonical content so repeated identical discovery produces the same catalog fingerprint.
 
 ### Assessment finding
 
@@ -227,23 +248,24 @@ Logical identity and version fingerprints must remain separate. A description ed
 ```text
 mooctl config validate
 mooctl init
-mooctl detect --client <client>
-mooctl import --from <client> [--dry-run]
-mooctl import --from-file <client-config>
+mooctl source detect --client <client>
+mooctl source link --from <client> [--dry-run]
+mooctl source import --from <client> [--dry-run]
+mooctl source import --file <client-config>
 mooctl server add
 mooctl server test <server>
 mooctl server list
 mooctl server remove <server>
 mooctl discover
-mooctl tools
+mooctl tool list
 mooctl assess
-mooctl diff [snapshot-a] [snapshot-b]
-mooctl findings
+mooctl snapshot diff [snapshot-a] [snapshot-b]
+mooctl finding list
 mooctl finding show <finding-id>
 mooctl remediation propose <finding-id>
 ```
 
-Planned 0.2 commands include `policy check`, `policy test`, `policy apply`, and `call`. `mooctl chat` is planned for 0.3.
+Planned 0.2 commands include `policy check`, `policy test`, `policy apply`, and `tool call`. `mooctl chat` is planned for 0.3.
 
 Commands must support machine-readable output where appropriate and must not mix protocol traffic with diagnostic output.
 
@@ -267,6 +289,8 @@ Profiles must be versionable and included in report provenance.
 
 - MCP server definitions are security-sensitive configuration.
 - Starting a stdio server executes a local command and must be treated as code execution.
+- Pasted or imported command text must not be passed through a shell unless an explicit advanced mode is designed, documented, and separately confirmed.
+- Package-manager invocations may download and execute third-party code and require a distinct, informed confirmation.
 - Remote endpoints, descriptions, schemas, results, and errors are untrusted.
 - Credentials must be externally referenced and never persisted in snapshots.
 - Remote connections need explicit timeouts, size limits, redirect behavior, and TLS expectations.
@@ -299,6 +323,7 @@ Profiles must be versionable and included in report provenance.
 - Connection and call timeouts must be configurable.
 - Spawned stdio processes must be cleaned up reliably.
 - Snapshots must be deterministic for identical inputs.
+- Observation metadata must not alter canonical catalog fingerprints.
 
 ### Performance
 
@@ -312,6 +337,15 @@ Profiles must be versionable and included in report provenance.
 - Telemetry is opt-in.
 - Reports show which fields were redacted or omitted.
 - Literal credentials encountered while parsing an explicitly authorized source must remain in memory only for the minimum processing period and must never be logged, displayed, snapshotted, proposed, or persisted by MOO.
+
+### Project and runtime state
+
+- `moo.config.json` contains commit-friendly project configuration.
+- `moo.profile.json` contains an optionally committed quality profile.
+- `moo/proposals/` contains reviewable remediation artifacts and may be committed.
+- `.moo/cache/` and `.moo/runs/` are disposable local state and ignored by default.
+- `.moo/reports/` is ignored by default and exported explicitly for CI or review.
+- `.moo/snapshots/` retention is configurable; canonical snapshot content remains deterministic regardless of filename or observation time.
 
 ### Evidence vocabulary
 
@@ -345,6 +379,8 @@ Profiles must be versionable and included in report provenance.
 - Integration tests using real local MCP interactions.
 - Tool-name collision tests.
 - Snapshot and report-format tests.
+- Tests proving timestamps and run metadata do not change canonical snapshot fingerprints.
+- Tests proving pasted commands are executed as an executable plus arguments without implicit shell interpretation.
 - End-to-end demonstration of onboarding, discovery, drift, a finding, and a reviewed remediation proposal.
 
 Policy, routing, argument-validation, direct-call bypass, confirmation, and fail-closed invocation tests become required in 0.2.
@@ -429,6 +465,7 @@ Release 0.1 is complete when:
 - Findings contain evidence, severity, confidence, and remediation.
 - A versioned quality profile changes findings, severities, or CI thresholds without modifying an upstream server.
 - A suitable finding can produce a reviewable overlay or policy proposal with provenance.
+- Every proposal records the capability and schema fingerprints on which it was based so stale proposals can be detected.
 - Reports serve humans and CI automation.
 - Core functionality works without an LLM or hosted service.
 - Setup and demonstration instructions work from a clean checkout.

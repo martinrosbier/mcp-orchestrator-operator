@@ -106,8 +106,8 @@ Define a canonical capability model separating:
 - Normalized input and output schemas.
 - Organization-supplied metadata.
 - Server-provided instructions and organization overlays, each with provenance and explicit precedence.
-- Metadata, schema, and semantic fingerprints.
-- Discovery evidence and timestamps.
+- Metadata, schema, and structural fingerprints. Do not label a plain hash as semantic analysis.
+- References to discovery observations; timestamps and run outcomes remain outside canonical fingerprinted content.
 
 Every assessment finding must contain:
 
@@ -122,6 +122,8 @@ Every assessment finding must contain:
 
 Never present a heuristic as a confirmed vulnerability or duplicate. Never assume a tool is safe because its annotations claim it is read-only or non-destructive.
 
+Release 0.1 assesses declared contracts, configuration, reachability, and discovery evidence only. Do not claim observed runtime behavior, result quality, reliability, latency, or usage without invocation or telemetry evidence.
+
 Turn actionable findings into reviewable remediation proposals. A proposal must choose and explain one of three layers:
 
 1. An upstream server correction, which is the preferred durable fix when the server is controlled by the organization.
@@ -133,6 +135,8 @@ Natural-language instructions and overlays are advisory. They may guide discover
 ## Security requirements
 
 - Treat stdio server configuration as local code execution.
+- Parse pasted commands into an executable and argument array; do not invoke a shell by default.
+- Require separate informed confirmation before package download or process execution.
 - Treat server metadata, schemas, results, and errors as untrusted.
 - Never persist resolved credentials.
 - Validate invocation arguments before forwarding.
@@ -176,9 +180,11 @@ Build tests alongside each vertical slice:
 
 - Canonical normalization and serialization.
 - Stable identifiers and fingerprint behavior.
+- Separation of deterministic catalog content from timestamped discovery observations.
 - Tool-name collisions.
 - Invalid and changing schemas.
 - Every assessment rule and a valid counterexample.
+- Stale-proposal detection when capability or schema fingerprints change.
 - Duplicate and structural-similarity behavior.
 - Connection failures, timeouts, malformed responses, and process cleanup.
 - Real local MCP integration tests.
@@ -201,6 +207,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 
 - Establish the TypeScript toolchain and CI.
 - Implement `mooctl init`, paste-friendly `mooctl server add`, `mooctl server list`, and `mooctl server test` for one local stdio server.
+- Test unsaved in-memory drafts directly in the add wizard; use `server test <id>` only for retained definitions.
 - Make manual JSON editing an escape hatch, not the primary onboarding path.
 - Create one demonstration MCP server.
 - Connect using the official SDK.
@@ -209,12 +216,14 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 
 ### Phase 2 — Catalog
 
-- Add `mooctl detect --client <client>` and one explicit, format-aware client adapter that inspects only disclosed known locations after consent.
+- Add `mooctl source detect --client <client>` and one explicit, format-aware client adapter that inspects only disclosed known locations after consent.
 - Keep detection candidates ephemeral unless the user chooses linked or imported management.
-- Add `mooctl import --from <client>` and `mooctl import --from-file <client-config>` with individual selection, preview, secret-reference preservation, and confirmation before writing.
+- Add `mooctl source link --from <client>` for read-only external configuration sources with explicit provenance and drift behavior.
+- Add `mooctl source import --from <client>` and `mooctl source import --file <client-config>` with individual selection, preview, secret-reference preservation, base-directory resolution, and confirmation before writing.
 - Add multi-server discovery and partial-failure behavior.
 - Normalize capabilities and resolve naming collisions.
 - Produce deterministic snapshots and fingerprints.
+- Store timestamps, latency, outcomes, and run identifiers in separate discovery observations that reference canonical snapshot fingerprints.
 - Add snapshot diffing.
 
 ### Phase 3 — Assessment
