@@ -40,7 +40,7 @@ Existing gateways increasingly solve routing, authentication, allowlisting, and 
 1. **Evidence over unsupported scoring.** Findings must explain what was observed and why it matters.
 2. **Deterministic behavior first.** Ordinary validation and policy logic must not depend on an LLM.
 3. **Declared data is not trusted evidence.** Tool descriptions and annotations are claims that may be incomplete or incorrect.
-4. **Connect without becoming infrastructure.** The MVP connects to real MCP servers but is not a production gateway, identity provider, or secrets manager.
+4. **Connect without becoming infrastructure.** Release 0.1 connects to real MCP servers but is not a production gateway, identity provider, or secrets manager.
 5. **Explicit invocation before autonomous orchestration.** Users select or approve tool calls; multi-step autonomous planning is deferred.
 6. **Local-first and private by default.** A hosted service must never be required for core functionality.
 7. **Interoperate instead of replacing.** Reuse official MCP SDKs, conformance tooling, gateways, policy engines, and OpenTelemetry.
@@ -59,14 +59,15 @@ Existing gateways increasingly solve routing, authentication, allowlisting, and 
 
 ### Secondary users
 
+- Builders and "vibe coders" already using MCP-enabled applications who want to understand and improve their setup without learning configuration formats.
 - Agent developers selecting reliable tools.
 - Enterprise architects defining capability standards.
 - Governance and compliance teams requiring traceable evidence.
 - Consultancies performing repeatable MCP estate assessments.
 
-## 5. MVP scope
+## 5. Release roadmap and 0.1 scope
 
-The MVP is a TypeScript CLI with a reusable application core. A lightweight interactive chat or REPL may be included, but no web dashboard is required.
+Release 0.1 is a TypeScript CLI with a reusable application core. It ends at connection, cataloging, assessment, drift detection, and reviewed remediation proposals. Governed invocation is planned for 0.2 and focused chat for 0.3. No web dashboard is required.
 
 ### 5.1 Connect and map
 
@@ -80,8 +81,10 @@ The system must:
 - Let advanced users add stdio servers by command and arguments and HTTP servers by URL, protocol era, and secret references.
 - Preview and validate configuration changes before writing them.
 - Import server definitions from a user-selected MCP client configuration file through explicit, format-aware adapters. Imports must be previewed and must not copy resolved credentials.
-- Preserve environment-variable and credential-provider references when importing. If credentials cannot be reused, import the definition with a clear sign-in or missing-credential action.
+- Preserve environment-variable and credential-provider references when importing. If credentials cannot be reused, import the definition with a clear credential-setup or missing-credential action.
 - Require confirmation before testing a detected stdio server because doing so executes its configured local command.
+- Support three source modes: linked configuration that can be re-read for drift, imported definitions copied into MOO, and temporary inspect-only discovery.
+- Record source provenance and management mode for every server definition.
 - Load server definitions from a version-controlled YAML or JSON file.
 - Connect to multiple MCP servers using the official TypeScript SDK.
 - Support local stdio and Streamable HTTP transports.
@@ -93,7 +96,7 @@ The system must:
 - Save deterministic JSON catalog snapshots.
 - Compare snapshots and classify relevant changes.
 
-Resources and prompts may be recorded as server capability counts, but their full assessment is not required in the MVP.
+Resources and prompts may be recorded as server capability counts, but their full assessment is not required in 0.1.
 
 ### 5.2 Assess and improve
 
@@ -107,15 +110,15 @@ The system must:
 - Apply a version-controlled organizational quality profile.
 - Attach evidence, severity, confidence, and remediation to every finding.
 - Support documented suppressions with reasons and optional expiration dates.
-- Generate terminal, JSON, and SARIF-compatible reports.
+- Generate terminal and JSON reports. Add SARIF-compatible output after CI demand is validated.
 - Produce concrete suggested changes where correction is deterministic.
 - Exit with configurable status codes for CI use.
 - Convert suitable findings into reviewable local remediation proposals, including metadata overlays, policy rules, or upstream code/configuration suggestions.
 - Never silently apply a finding recommendation to an upstream MCP server.
 
-### 5.3 Orchestrate and govern
+### 5.3 Planned controlled invocation — 0.2
 
-The MVP must provide a narrow proof of orchestration:
+Release 0.2 should provide a narrow proof of orchestration:
 
 - List and search normalized capabilities.
 - Resolve a canonical capability identifier to its originating server.
@@ -126,7 +129,7 @@ The MVP must provide a narrow proof of orchestration:
 - Record redacted invocation metadata: capability fingerprint, decision, status, and latency.
 - Require explicit confirmation for destructive or high-risk capabilities.
 
-The MVP must not perform autonomous multi-step planning.
+Release 0.2 must not perform autonomous multi-step planning.
 
 ### 5.4 Remediation layers
 
@@ -134,7 +137,7 @@ MOO must distinguish three ways to improve or constrain a capability:
 
 1. **Upstream correction:** fix the MCP server's source, schema, descriptions, annotations, or authorization. This is the preferred durable solution when the organization controls the server.
 2. **Organization overlay:** attach organization-owned classification, ownership, guidance, aliases, or improved display metadata without claiming the upstream server supplied it. Overlays must preserve original discovered values and provenance.
-3. **Enforceable policy:** define visibility and invocation decisions such as allow, deny, or require confirmation. Policies are evaluated by MOO and cannot be replaced by natural-language instructions.
+3. **Enforceable policy:** propose visibility and invocation decisions such as allow, deny, or require confirmation. Runtime evaluation begins in 0.2; natural-language instructions can never replace policy.
 
 MOO may ingest the optional natural-language `instructions` supplied by modern MCP servers during discovery. Those instructions are untrusted advisory content for model usage and must not affect authorization or safety decisions.
 
@@ -143,17 +146,15 @@ For suitable findings, MOO should support a reviewed workflow such as:
 ```text
 mooctl finding show <finding-id>
 mooctl remediation propose <finding-id>
-mooctl policy test --proposal <file>
-mooctl policy apply --proposal <file>
 ```
 
-`remediation propose` must explain which layer is recommended and why. `policy apply` modifies only MOO-owned local configuration, requires an explicit review or confirmation, and must never modify an upstream server.
+`remediation propose` must explain which layer is recommended and why. In 0.1, proposals are reviewable artifacts and are not runtime enforcement. Policy testing and application arrive with governed invocation in 0.2. No remediation command may modify an upstream server automatically.
 
-### 5.5 Conversational exploration
+### 5.5 Planned conversational exploration — 0.3
 
 Users should be able to ask:
 
-- Which servers and tools are connected?
+- Which servers are configured or reachable, and which tools were discovered?
 - Which capabilities can delete or modify customer data?
 - What changed since the previous snapshot?
 - Which tools appear to overlap?
@@ -175,6 +176,8 @@ An LLM provider must be optional. Discovery, assessment, reporting, policy, and 
 - Transport configuration with secret references, never resolved values.
 - Discovered protocol and capability metadata.
 - Discovery timestamp and outcome.
+- Configuration source, source adapter, and management mode: linked, imported, or MOO-managed.
+- Last observed source fingerprint for linked-source drift detection.
 
 ### Capability record
 
@@ -202,15 +205,15 @@ Logical identity and version fingerprints must remain separate. A description ed
 - Recommended remediation.
 - Suppression state and rationale.
 
-### Governance decision
+### Governance decision — planned for 0.2
 
-- Principal or local actor.
+- Execution context, including kind, label, and whether it is authenticated.
 - Capability ID and fingerprint.
 - Decision: allow, deny, or require confirmation.
 - Matching policy rule and reason.
 - Decision timestamp.
 
-### Execution evidence
+### Execution evidence — planned for 0.2
 
 - Invocation ID and trace correlation when available.
 - Capability ID and schema fingerprint.
@@ -224,27 +227,23 @@ Logical identity and version fingerprints must remain separate. A description ed
 ```text
 mooctl config validate
 mooctl init
-mooctl detect
-mooctl import --detected
+mooctl detect --client <client>
+mooctl import --from <client> [--dry-run]
 mooctl import --from-file <client-config>
 mooctl server add
 mooctl server test <server>
 mooctl server list
 mooctl server remove <server>
 mooctl discover
-mooctl servers
 mooctl tools
 mooctl assess
 mooctl diff [snapshot-a] [snapshot-b]
 mooctl findings
 mooctl finding show <finding-id>
 mooctl remediation propose <finding-id>
-mooctl policy check <capability>
-mooctl policy test --proposal <file>
-mooctl policy apply --proposal <file>
-mooctl call <capability> --args <json>
-mooctl chat
 ```
+
+Planned 0.2 commands include `policy check`, `policy test`, `policy apply`, and `call`. `mooctl chat` is planned for 0.3.
 
 Commands must support machine-readable output where appropriate and must not mix protocol traffic with diagnostic output.
 
@@ -277,7 +276,7 @@ Profiles must be versionable and included in report provenance.
 - Logs and reports must redact likely secrets.
 - Invocation arguments and results must not be stored by default.
 - A failed or unavailable policy check must fail closed for invocation.
-- High-risk execution requires explicit confirmation in the MVP.
+- High-risk execution requires explicit confirmation when governed invocation is introduced in 0.2.
 - Natural-language server instructions and organization guidance are never authorization controls.
 - Client detection may inspect only known locations for explicitly selected clients, after showing the intended scope and receiving consent.
 - Detection and import must never copy resolved credentials, modify another client's configuration, or start a detected stdio server without separate confirmation.
@@ -312,6 +311,22 @@ Profiles must be versionable and included in report provenance.
 - Core operation works offline except for explicitly configured remote servers.
 - Telemetry is opt-in.
 - Reports show which fields were redacted or omitted.
+- Literal credentials encountered while parsing an explicitly authorized source must remain in memory only for the minimum processing period and must never be logged, displayed, snapshotted, proposed, or persisted by MOO.
+
+### Evidence vocabulary
+
+- **Configured** means a server definition was found in a supported source or MOO configuration.
+- **Reachable** means MOO successfully contacted and discovered it during a specific run.
+- **Governed** means an invocation passed through MOO policy, beginning in 0.2.
+- **Observed usage** means MOO saw an invocation directly or received it through an explicit telemetry integration.
+- Configuration detection alone must never be presented as evidence of actual usage.
+
+### Usability
+
+- A non-specialist should reach a useful first catalog within five minutes for a supported existing client configuration.
+- Connecting the first server must not require JSON editing or prior knowledge of MCP transports.
+- Every onboarding failure should explain the next corrective action.
+- Advanced protocol and configuration terminology should be progressively disclosed.
 
 ### Maintainability
 
@@ -326,14 +341,13 @@ Profiles must be versionable and included in report provenance.
 - Unit tests for every assessment rule, including counterexamples.
 - Fingerprint stability and drift-classification tests.
 - Exact and structural duplicate-detection tests.
-- Policy allow, deny, confirmation, and fail-closed tests.
-- Routing and argument-validation tests.
 - Process cleanup, timeout, malformed response, and partial-discovery tests.
 - Integration tests using real local MCP interactions.
 - Tool-name collision tests.
-- Tests proving unauthorized tools cannot be invoked directly.
 - Snapshot and report-format tests.
-- End-to-end demonstration of discovery, a finding, a rejected call, and an approved call.
+- End-to-end demonstration of onboarding, discovery, drift, a finding, and a reviewed remediation proposal.
+
+Policy, routing, argument-validation, direct-call bypass, confirmation, and fail-closed invocation tests become required in 0.2.
 
 ## 12. Demonstration environment
 
@@ -343,9 +357,9 @@ Provide three local MCP servers with intentionally varied quality:
 - Documents server with strong descriptions and schemas.
 - Operations server with vague descriptions, broad objects, collisions, and inconsistent annotations.
 
-The demo must show multi-server discovery, a normalized catalog, an actionable finding, an overlap candidate, snapshot drift, a permitted call, a denied or confirmation-required call, and conversational explanation of a finding.
+The 0.1 demo must show multi-server discovery, a normalized catalog, an actionable finding, an overlap candidate, snapshot drift, and a reviewed remediation proposal.
 
-## 13. Explicit non-goals for the MVP
+## 13. Explicit non-goals for release 0.1
 
 - Production-grade gateway or reverse proxy.
 - Autonomous planning and multi-step workflows.
@@ -374,7 +388,7 @@ src/
   comparison/      Drift, duplicates, overlap candidates
   policy/          Minimal decisions and future export adapters
   invocation/      Validation, authorization, confirmation, routing, evidence
-  reporting/       Terminal, JSON, SARIF-compatible output
+  reporting/       Terminal and JSON output; later SARIF-compatible output
   chat/            Optional natural-language interface over application APIs
   cli/             Commands and user interaction
 examples/
@@ -394,16 +408,15 @@ These are package boundaries inside a modular monolith, not services. Do not cre
 6. Implement the rule engine and initial deterministic rules.
 7. Add profiles, suppressions, and reports.
 8. Add duplicate and structural-overlap candidates.
-9. Add minimal policy decisions and explicit routed calls.
-10. Add reviewed finding-to-overlay and finding-to-policy remediation workflows.
-11. Add the focused chat/REPL interface.
-12. Add optional `mcp-tool-control` integration without crossing its trusted-host boundary.
-13. Complete demonstration servers and end-to-end tests.
-14. Validate against real estates before expanding runtime functionality.
+9. Add reviewed finding-to-overlay and finding-to-policy proposal workflows.
+10. Complete demonstration servers and end-to-end tests.
+11. Validate against real estates.
+12. In 0.2, add minimal policy decisions, explicit routed calls, and optional `mcp-tool-control` integration.
+13. In 0.3, add the focused chat/REPL interface.
 
-## 16. MVP acceptance criteria
+## 16. Release 0.1 acceptance criteria
 
-The MVP is complete when:
+Release 0.1 is complete when:
 
 - Three configured servers can be discovered in one run.
 - A new user can initialize configuration and add or test a server without hand-writing JSON.
@@ -412,15 +425,11 @@ The MVP is complete when:
 - Tool-name collisions do not overwrite or ambiguously identify capabilities.
 - Repeated discovery creates stable fingerprints.
 - Meaningful schema changes appear in deterministic diffs.
-- At least ten useful deterministic rules are implemented and tested.
+- Three to five useful deterministic rules are implemented and tested.
 - Findings contain evidence, severity, confidence, and remediation.
-- A quality profile changes enforcement without source changes.
+- A versioned quality profile changes findings, severities, or CI thresholds without modifying an upstream server.
 - A suitable finding can produce a reviewable overlay or policy proposal with provenance.
 - Reports serve humans and CI automation.
-- An allowed call routes to the correct server.
-- A denied tool cannot be invoked through any CLI or chat path.
-- A high-risk tool requires confirmation.
-- Chat answers questions from structured catalog and finding data.
 - Core functionality works without an LLM or hosted service.
 - Setup and demonstration instructions work from a clean checkout.
 
@@ -458,10 +467,13 @@ Standardization should begin with implementation-independent JSON schemas for ca
 - YAML versus JSON for human-authored configuration.
 - JSON Schema normalization and fingerprint canonicalization.
 - Files only versus SQLite for local history.
-- Chat provider abstraction and whether chat ships in 0.1 or 0.2.
+- Chat provider abstraction for the planned 0.3 release.
 - Confirmation UX for interactive and non-interactive execution.
 - Initial rules and required evidence for confirmed versus heuristic findings.
 - Final project, package, and CLI naming after namespace and trademark checks.
 - Which MCP client configuration formats are supported by the first import adapters.
+- Whether the first supported source defaults to linked, imported, or inspect-only mode.
+- How duplicate definitions found across multiple clients are identified without silently merging distinct servers.
 - The exact merge rules and precedence for original metadata, organization overlays, and server-provided instructions.
-- Whether `mcp-tool-control` integration is demonstrated in 0.1 or the next milestone.
+- Whether MCP OAuth-client support belongs in 0.2 or a later release; 0.1 may require external credential references.
+- Whether `mcp-tool-control` integration is demonstrated in 0.2 or a later milestone.

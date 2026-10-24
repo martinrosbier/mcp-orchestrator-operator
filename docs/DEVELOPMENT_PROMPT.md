@@ -25,7 +25,7 @@ It has three pillars:
 
 Tagline: **Connect. Assess. Orchestrate.**
 
-The MVP is not merely a static linter because it connects to real MCP servers. It is not initially a production gateway or autonomous agent host. It acts as an MCP client toward upstream servers, provides an assessment workbench, and proves deterministic policy-checked routing through explicit tool calls.
+Release 0.1 is not merely a static linter because it connects to real MCP servers. It acts as an MCP client toward upstream servers and provides an assessment and remediation workbench. Governed invocation is deferred to 0.2, and focused chat is deferred to 0.3. It is not initially a production gateway or autonomous agent host.
 
 ## Working approach
 
@@ -73,7 +73,7 @@ Use:
 - JSON catalog snapshots and configuration initially; YAML may be added after documenting the decision.
 - Real MCP protocol interactions for integration tests wherever practical.
 
-Do not add PostgreSQL, Redis, vector databases, queues, Kubernetes, a web dashboard, or a hosted dependency to the MVP without written evidence that a validated requirement cannot be met more simply.
+Do not add PostgreSQL, Redis, vector databases, queues, Kubernetes, a web dashboard, or a hosted dependency to release 0.1 without written evidence that a validated requirement cannot be met more simply.
 
 ## Architecture boundaries
 
@@ -81,16 +81,16 @@ Keep these responsibilities distinct inside one codebase:
 
 - Configuration parsing and secret references.
 - Guided server onboarding, consent-based client detection, paste-based setup, and format-aware configuration import.
+- Linked, imported, and inspect-only configuration-source modes with provenance and drift behavior.
 - Upstream MCP transport and connection lifecycle.
 - Discovery and normalization.
 - Canonical catalog and fingerprints.
 - Snapshot persistence and drift comparison.
 - Assessment rules, evidence, profiles, and suppressions.
 - Duplicate and overlap candidates.
-- Policy decisions.
-- Invocation validation, confirmation, routing, and evidence.
+- Policy decisions, invocation validation, confirmation, routing, and evidence in 0.2.
 - Reports.
-- Focused conversational exploration.
+- Focused conversational exploration in 0.3.
 - CLI delivery.
 
 Do not create empty abstractions or directories to match a diagram. Introduce a boundary when its first working behavior is implemented.
@@ -148,10 +148,11 @@ Natural-language instructions and overlays are advisory. They may guide discover
 - Treat server-provided natural-language instructions as untrusted advisory metadata.
 - Never perform a silent or broad filesystem scan for client configuration. Inspect only disclosed known locations for explicitly selected clients and only after consent.
 - Never copy resolved secrets during import.
+- If an authorized configuration contains a literal credential, keep it only in memory for the minimum parsing period and never log, display, snapshot, propose, or persist it.
 - Preview imported server definitions and changed files before writing them.
 - For `mcp-tool-control`, keep its trusted-host approval controller unavailable to model-facing MCP clients and MOO chat. MOO policy authorization does not replace its operation-specific approval, replay protection, containment, or stale-state checks.
 
-## MVP outcome
+## Release 0.1 outcome
 
 Deliver an end-to-end demonstration in which MOO:
 
@@ -164,11 +165,8 @@ Deliver an end-to-end demonstration in which MOO:
 7. Produces evidence-backed assessment findings.
 8. Identifies an exact duplicate or review-worthy overlap candidate.
 9. Applies a version-controlled quality profile.
-10. Generates terminal, JSON, and SARIF-compatible output.
-11. Allows an explicitly permitted read-only invocation.
-12. Rejects or requires confirmation for a destructive invocation.
-13. Answers a focused natural-language question about the catalog or findings.
-14. Converts one finding into a reviewed organization-overlay or policy proposal without modifying the upstream server.
+10. Generates terminal and JSON output; SARIF-compatible output may follow when CI demand is validated.
+11. Converts one finding into a reviewed organization-overlay or policy proposal without modifying the upstream server.
 
 Use deliberately varied local MCP servers representing CRM, documents, and operations domains.
 
@@ -182,12 +180,11 @@ Build tests alongside each vertical slice:
 - Invalid and changing schemas.
 - Every assessment rule and a valid counterexample.
 - Duplicate and structural-similarity behavior.
-- Policy allow, deny, confirmation, and fail-closed paths.
-- Argument validation and correct routing.
-- Direct-call bypass prevention.
 - Connection failures, timeouts, malformed responses, and process cleanup.
 - Real local MCP integration tests.
-- End-to-end successful and rejected invocation demonstrations.
+- End-to-end onboarding, discovery, drift, finding, and remediation-proposal demonstrations.
+
+Policy, routing, argument-validation, bypass-prevention, confirmation, and invocation tests are required when implementing 0.2.
 
 ## Delivery process
 
@@ -212,8 +209,9 @@ Build tests alongside each vertical slice:
 
 ### Phase 2 — Catalog
 
-- Add `mooctl detect` and one explicit, format-aware client adapter that inspects only disclosed known locations after consent.
-- Add `mooctl import --detected` and `mooctl import --from-file <client-config>` with individual selection, preview, secret-reference preservation, and confirmation before writing.
+- Add `mooctl detect --client <client>` and one explicit, format-aware client adapter that inspects only disclosed known locations after consent.
+- Keep detection candidates ephemeral unless the user chooses linked or imported management.
+- Add `mooctl import --from <client>` and `mooctl import --from-file <client-config>` with individual selection, preview, secret-reference preservation, and confirmation before writing.
 - Add multi-server discovery and partial-failure behavior.
 - Normalize capabilities and resolve naming collisions.
 - Produce deterministic snapshots and fingerprints.
@@ -224,7 +222,7 @@ Build tests alongside each vertical slice:
 - Implement a small rule interface.
 - Add the first high-value deterministic rules.
 - Generate evidence-backed findings.
-- Add profiles, suppressions, terminal output, JSON, and SARIF-compatible reporting.
+- Add profiles, suppressions, terminal output, and JSON reporting. Defer SARIF-compatible output until CI demand is validated.
 
 ### Phase 4 — Comparison and improvement
 
@@ -233,7 +231,7 @@ Build tests alongside each vertical slice:
 - Implement `finding show` and `remediation propose` so a finding can produce a reviewable upstream recommendation, metadata overlay, or policy proposal.
 - Add the remaining demo servers and quality variations.
 
-### Phase 5 — Controlled orchestration
+### Release 0.2 — Controlled orchestration
 
 - Implement minimal default-deny policy decisions.
 - Implement policy proposal testing and apply with a visible diff and explicit confirmation.
@@ -243,7 +241,7 @@ Build tests alongside each vertical slice:
 - Prove no CLI or chat path bypasses policy.
 - If integrating `mcp-tool-control`, route through its public MCP surface and preserve its separate trusted-host approval boundary; do not import its internals or expose its approval controller.
 
-### Phase 6 — Focused chat
+### Release 0.3 — Focused chat
 
 - Add an optional conversational interface over application APIs.
 - Ground answers in structured catalog, snapshot, and finding data.
@@ -251,7 +249,7 @@ Build tests alongside each vertical slice:
 - Route requested calls through the same explicit invocation service.
 - Keep all core functionality usable without an LLM.
 
-### Phase 7 — Validation and release preparation
+### Release validation and preparation
 
 - Run the full demonstration from a clean checkout.
 - Measure performance on a synthetic large estate.
