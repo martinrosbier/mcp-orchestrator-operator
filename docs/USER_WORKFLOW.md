@@ -56,7 +56,7 @@ Manual JSON editing is an advanced escape hatch, not the expected onboarding pat
 mooctl server add
 ```
 
-The simplest path accepts material copied from MCP setup documentation:
+The simplest path accepts one of four defined forms: an MCP URL, supported JSON configuration, explicit executable-plus-arguments input, or curated package-runner shorthand. MOO rejects pipes, redirection, substitutions, environment prefixes, and ambiguous quoting rather than guessing.
 
 ```text
 Paste an MCP URL, command, package, or configuration:
@@ -68,16 +68,20 @@ Name: example
 Command: npx
 Arguments: -y @company/example-mcp
 
-Executable: npx
-Arguments: ["-y", "@company/example-mcp"]
+Recognized adapter: npm package runner
+Native executable: C:\Program Files\nodejs\node.exe
+Runner module: C:\Program Files\nodejs\node_modules\npm\bin\npx-cli.js
+Spawned arguments: ["<runner-module>", "-y", "@company/example-mcp"]
 Working directory: C:\path\to\company-mcp
 Network/install behavior: this package-manager command may download code
+Launch definition fingerprint: sha256:launch-example
+Environment variables passed: PATH, SYSTEMROOT, EXAMPLE_TOKEN
 
 Save this definition? Yes
 Download or execute it for a connection test? No
 ```
 
-MOO converts recognized input into an executable and argument array without passing it through a shell, displays the normalized definition, and asks for confirmation. Downloading packages or starting the process requires a separate confirmation. If the input is ambiguous, MOO asks only for the missing fields instead of exposing the complete configuration schema.
+MOO converts recognized input into an executable and argument array without passing it through a shell, displays the actual native executable, runner module, and arguments it will spawn, and asks for confirmation. On Windows, `.cmd` and `.bat` shims are never presented as native no-shell execution; curated package-runner adapters resolve them to a reviewed native runtime and runner module. Downloading packages or starting the process requires a separate confirmation bound to the displayed launch-definition fingerprint. The child receives a minimal environment containing documented runtime essentials and explicitly selected variable names, never the full parent environment. If the input is ambiguous, MOO asks for the missing fields or rejects it.
 
 Example interaction:
 
@@ -177,10 +181,19 @@ MOO then asks how to manage the selection:
 ```text
 1. Link — re-read this client configuration and detect future changes
 2. Import — copy reviewed definitions into this MOO workspace
-3. Inspect only — build a temporary inventory without saving
+3. Temporary discovery — build an inventory without retaining the definition; stdio execution still requires separate consent
 ```
 
 Each retained server records source provenance and a management mode of `linked`, `imported`, or `moo-managed`. Linked sources are never modified by MOO. Removing a linked entry detaches it from the MOO workspace; it does not delete or change the source client's configuration.
+
+Removing one server from a linked source creates a persistent exclusion so refresh does not silently re-add it. `mooctl source unlink <source>` detaches the entire source without modifying its external configuration.
+
+A linked source has two states:
+
+- **Observed:** the latest normalized definition read from the external client configuration.
+- **Accepted:** the reviewed definition fingerprint permitted for testing and discovery.
+
+MOO executes only the accepted definition. If the source, resolved executable, arguments, working directory, or credential references change after review, MOO refuses execution until the change is accepted.
 
 If equivalent-looking definitions appear in multiple clients, MOO presents them as possible duplicates with their provenance. It never silently merges them. Source-definition drift is reported separately from capability drift. A linked change to a command, URL, working directory, or credential reference must be reviewed before MOO executes or adopts it.
 
@@ -192,7 +205,7 @@ mooctl source import --from claude
 mooctl source link --from claude
 ```
 
-`mooctl source detect --client claude` produces ephemeral candidates for the current command or interactive session; it does not create a hidden persistent detection database. The user must link, import, inspect, or directly test a candidate before the session ends. An explicitly selected configuration file remains supported:
+`mooctl source detect --client claude` is preview-only and does not create a persistent detection database. `source link` and `source import` independently re-detect and re-preview the selected client before writing. During `mooctl init`, detection and selection may occur in one interactive process. An explicitly selected configuration file remains supported:
 
 ```text
 mooctl source import --file ./existing-mcp-config.json
@@ -206,7 +219,7 @@ Import behavior:
 4. Show unsupported fields and conflicts.
 5. Preserve environment-variable or credential-provider references where possible.
 6. If the authorized source contains a literal credential, keep it in memory only while parsing and never log, display, snapshot, propose, or persist it.
-7. Mark connections that require credential setup or a missing environment variable.
+7. Refuse to reuse a literal secret by default; mark the server non-runnable until an environment or approved credential-provider reference is supplied.
 8. Preview the resulting MOO configuration and allow individual server selection.
 9. Resolve relative commands and working directories against the source configuration's base directory and show the normalized result.
 10. Test selected servers only with separate explicit approval, because stdio tests may download or execute code.
@@ -227,13 +240,23 @@ Next:
   3. Add another server
 ```
 
+When a linked source changes later:
+
+```text
+mooctl source refresh claude
+mooctl source diff claude
+mooctl source accept claude
+```
+
+`refresh` records the observed definition without changing the accepted one. `diff` shows the exact normalized change and fingerprints. `accept` updates the accepted definition after review.
+
 ## 4. Discover the estate
 
 ```text
 mooctl discover
 ```
 
-MOO asks the official SDK to negotiate the supported protocol era, obtains server discovery metadata when available, lists tools, normalizes capabilities, and saves a snapshot.
+MOO asks the official SDK to negotiate the supported protocol era, obtains server discovery metadata when available, follows every `tools/list` page within configured page, item, byte, and deadline limits, normalizes capabilities, and saves a snapshot. Repeated or malformed cursors produce a partial observation rather than an apparently complete catalog.
 
 Example:
 
@@ -302,8 +325,9 @@ MOO generates a proposal rather than silently editing configuration:
   "sourceFinding": "finding-123",
   "target": "crm.delete_customer",
   "sourceServer": "crm",
-  "basedOnCapabilityFingerprint": "sha256:capability-example",
+  "basedOnMetadataFingerprint": "sha256:metadata-example",
   "basedOnSchemaFingerprint": "sha256:schema-example",
+  "basedOnCompleteRecordFingerprint": "sha256:record-example",
   "layer": "policy",
   "proposedRule": {
     "id": "confirm-crm-delete-customer",
@@ -412,7 +436,7 @@ mooctl snapshot diff
 mooctl assess
 ```
 
-MOO reports added, removed, and changed capabilities. Existing overlays and policies are checked against the new fingerprints, and stale rules or suppressions are surfaced for review.
+MOO reports added, removed, changed, and unknown capabilities. A capability is removed only when its server was completely enumerated in both compared observations. If a server failed or pagination was partial, its current state is unknown; last-known capabilities may be shown only as historical context. Existing overlays and policies are checked against the new fingerprints, and stale rules or suppressions are surfaced for review.
 
 ## Estate visibility vocabulary
 
@@ -436,7 +460,7 @@ moo/proposals/        reviewable proposals, optionally committed
 .moo/cache/           ignored discovery cache
 .moo/runs/            ignored observation records and diagnostics
 .moo/reports/         ignored by default; export explicitly for CI
-.moo/snapshots/       configurable retention; canonical content is deterministic
+.moo/snapshots/       ignored by default; explicit sanitized export/commit opt-in
 ```
 
 Canonical catalog snapshots contain no timestamps or run IDs. A separate discovery observation records when the run occurred, which servers were reachable, timing, failures, and the referenced canonical snapshot fingerprint.
