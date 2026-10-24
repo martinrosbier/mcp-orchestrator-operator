@@ -80,7 +80,7 @@ Do not add PostgreSQL, Redis, vector databases, queues, Kubernetes, a web dashbo
 Keep these responsibilities distinct inside one codebase:
 
 - Configuration parsing and secret references.
-- Guided server onboarding and format-aware configuration import.
+- Guided server onboarding, consent-based client detection, paste-based setup, and format-aware configuration import.
 - Upstream MCP transport and connection lifecycle.
 - Discovery and normalization.
 - Canonical catalog and fingerprints.
@@ -146,7 +146,8 @@ Natural-language instructions and overlays are advisory. They may guide discover
 - Do not retain raw arguments or results by default.
 - Document threat boundaries before advertising security properties.
 - Treat server-provided natural-language instructions as untrusted advisory metadata.
-- Never silently scan home directories for client configuration or copy resolved secrets during import.
+- Never perform a silent or broad filesystem scan for client configuration. Inspect only disclosed known locations for explicitly selected clients and only after consent.
+- Never copy resolved secrets during import.
 - Preview imported server definitions and changed files before writing them.
 - For `mcp-tool-control`, keep its trusted-host approval controller unavailable to model-facing MCP clients and MOO chat. MOO policy authorization does not replace its operation-specific approval, replay protection, containment, or stale-state checks.
 
@@ -202,7 +203,7 @@ Build tests alongside each vertical slice:
 ### Phase 1 — Walking skeleton
 
 - Establish the TypeScript toolchain and CI.
-- Implement `mooctl init`, interactive `mooctl server add`, `mooctl server list`, and `mooctl server test` for one local stdio server.
+- Implement `mooctl init`, paste-friendly `mooctl server add`, `mooctl server list`, and `mooctl server test` for one local stdio server.
 - Make manual JSON editing an escape hatch, not the primary onboarding path.
 - Create one demonstration MCP server.
 - Connect using the official SDK.
@@ -211,7 +212,8 @@ Build tests alongside each vertical slice:
 
 ### Phase 2 — Catalog
 
-- Add one explicit, format-aware `mooctl import --from-file <client-config>` adapter with preview, secret-reference preservation, and confirmation before writing.
+- Add `mooctl detect` and one explicit, format-aware client adapter that inspects only disclosed known locations after consent.
+- Add `mooctl import --detected` and `mooctl import --from-file <client-config>` with individual selection, preview, secret-reference preservation, and confirmation before writing.
 - Add multi-server discovery and partial-failure behavior.
 - Normalize capabilities and resolve naming collisions.
 - Produce deterministic snapshots and fingerprints.

@@ -73,10 +73,15 @@ The MVP is a TypeScript CLI with a reusable application core. A lightweight inte
 The system must:
 
 - Provide a guided `mooctl init` workflow that creates a valid local project configuration without requiring users to know its schema.
+- Make consent-based detection of MCP servers already configured in supported clients the default onboarding choice.
+- Inspect only disclosed, documented configuration locations for clients selected by the user; never perform a silent or broad filesystem scan.
 - Provide `mooctl server add`, `mooctl server test`, `mooctl server list`, and `mooctl server remove` workflows.
-- Let users add stdio servers by command and arguments and HTTP servers by URL, protocol era, and secret references.
+- Let users paste a command, package invocation, remote URL, or configuration snippet and convert recognized input into a reviewed server definition.
+- Let advanced users add stdio servers by command and arguments and HTTP servers by URL, protocol era, and secret references.
 - Preview and validate configuration changes before writing them.
 - Import server definitions from a user-selected MCP client configuration file through explicit, format-aware adapters. Imports must be previewed and must not copy resolved credentials.
+- Preserve environment-variable and credential-provider references when importing. If credentials cannot be reused, import the definition with a clear sign-in or missing-credential action.
+- Require confirmation before testing a detected stdio server because doing so executes its configured local command.
 - Load server definitions from a version-controlled YAML or JSON file.
 - Connect to multiple MCP servers using the official TypeScript SDK.
 - Support local stdio and Streamable HTTP transports.
@@ -219,6 +224,8 @@ Logical identity and version fingerprints must remain separate. A description ed
 ```text
 mooctl config validate
 mooctl init
+mooctl detect
+mooctl import --detected
 mooctl import --from-file <client-config>
 mooctl server add
 mooctl server test <server>
@@ -272,6 +279,8 @@ Profiles must be versionable and included in report provenance.
 - A failed or unavailable policy check must fail closed for invocation.
 - High-risk execution requires explicit confirmation in the MVP.
 - Natural-language server instructions and organization guidance are never authorization controls.
+- Client detection may inspect only known locations for explicitly selected clients, after showing the intended scope and receiving consent.
+- Detection and import must never copy resolved credentials, modify another client's configuration, or start a detected stdio server without separate confirmation.
 - A MOO gateway decision to allow a call does not prove that the upstream server controls its side effects safely.
 - For operations delegated to `mcp-tool-control`, MOO authorization must not replace its separate trusted-host approval, replay protection, or controlled-write guarantees.
 - Model-facing chat and MCP clients must never receive access to `mcp-tool-control`'s trusted approval controller.
@@ -378,7 +387,7 @@ These are package boundaries inside a modular monolith, not services. Do not cre
 ## 15. Delivery sequence
 
 1. Establish repository standards, toolchain, CI, and architecture decisions.
-2. Implement guided initialization, add one local server, and display discovered tools.
+2. Implement guided initialization, paste-based server addition, and display discovered tools.
 3. Connect to multiple servers and preserve partial failures.
 4. Normalize the catalog and create stable snapshots.
 5. Add fingerprints and snapshot diffing.
@@ -398,6 +407,7 @@ The MVP is complete when:
 
 - Three configured servers can be discovered in one run.
 - A new user can initialize configuration and add or test a server without hand-writing JSON.
+- A user can consent to detection in at least one supported MCP client and selectively import discovered server definitions.
 - An existing supported client configuration can be imported with a preview and without copying secrets.
 - Tool-name collisions do not overwrite or ambiguously identify capabilities.
 - Repeated discovery creates stable fingerprints.

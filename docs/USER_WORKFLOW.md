@@ -21,7 +21,7 @@ The guided initializer should:
 3. Create `moo.config.json` with no embedded credentials.
 4. Create `.moo/` for generated snapshots, reports, proposals, and local state.
 5. Add recommended ignored local-state paths to `.gitignore` only after preview and confirmation.
-6. Offer to add or import the first MCP server.
+6. Offer to find already configured MCP servers, paste a new server, import a selected file, or configure one manually.
 
 Example generated configuration:
 
@@ -40,11 +40,42 @@ Example generated configuration:
 
 The final schema URL will be chosen when the project has a stable publication location. The implementation must not ship the placeholder URL.
 
+The default first-run choice is designed for non-specialists:
+
+```text
+How would you like to connect MCP servers?
+
+1. Find servers already configured on this computer
+2. Paste a new MCP server URL, command, package, or configuration
+3. Import a configuration file
+4. Configure manually
+```
+
+Manual JSON editing is an advanced escape hatch, not the expected onboarding path.
+
 ## 2. Add a server interactively
 
 ```text
 mooctl server add
 ```
+
+The simplest path accepts material copied from MCP setup documentation:
+
+```text
+Paste an MCP URL, command, package, or configuration:
+> npx -y @company/example-mcp
+
+MOO recognized a local stdio MCP server.
+
+Name: example
+Command: npx
+Arguments: -y @company/example-mcp
+
+This command will execute local code.
+Review and test it? Yes
+```
+
+MOO converts recognized input into a normalized definition, displays it, and asks for confirmation. If the input is ambiguous, MOO asks only for the missing fields instead of exposing the complete configuration schema.
 
 Example interaction:
 
@@ -101,9 +132,51 @@ MOO stores the reference, not its value:
 
 Before writing, MOO displays a diff. `mooctl server test <id>` performs protocol negotiation and discovery without modifying configuration.
 
-## 3. Import existing MCP configuration
+## 3. Find and import existing MCP configuration
 
-Many users already have servers configured in an MCP client. MOO should provide explicit import adapters rather than asking them to copy entries by hand.
+Many users already have servers configured in clients such as Claude, Codex, Cursor, or VS Code. MOO should offer consent-based detection through explicit client adapters rather than asking users to find and copy entries by hand.
+
+```text
+mooctl detect
+```
+
+Example interaction:
+
+```text
+MOO can inspect known MCP client configuration locations.
+
+Clients to inspect:
+  [x] Claude
+  [x] Codex
+  [ ] Cursor
+  [ ] VS Code
+
+MOO will only read the disclosed configuration locations.
+It will not copy credentials or start servers.
+
+Continue? Yes
+```
+
+Results are selectable:
+
+```text
+Found 4 configured servers:
+
+  [x] filesystem    Claude    stdio
+  [x] github        Claude    stdio
+  [x] company-crm   Codex     streamable-http
+  [ ] postgres      Claude    missing POSTGRES_URL
+
+Import selected servers? Yes
+```
+
+The equivalent scriptable command may be:
+
+```text
+mooctl import --detected
+```
+
+It must still require an explicit client scope and provide preview or dry-run behavior. An explicitly selected configuration file remains supported:
 
 ```text
 mooctl import --from-file ./existing-mcp-config.json
@@ -111,16 +184,31 @@ mooctl import --from-file ./existing-mcp-config.json
 
 Import behavior:
 
-1. Detect or ask for the source format.
-2. Parse only supported server fields.
-3. Show unsupported fields and conflicts.
-4. Convert credentials to environment references where possible.
-5. Never resolve or copy credential values.
-6. Preview the resulting MOO configuration.
-7. Test selected servers only with explicit approval, because stdio tests execute local commands.
-8. Write only after confirmation.
+1. Show which clients and exact known locations will be inspected, and proceed only with consent.
+2. Detect or ask for the source format.
+3. Parse only supported server fields.
+4. Show unsupported fields and conflicts.
+5. Preserve environment-variable or credential-provider references where possible.
+6. Never resolve or copy credential values.
+7. Mark connections that require a new sign-in or missing environment variable.
+8. Preview the resulting MOO configuration and allow individual server selection.
+9. Test selected servers only with explicit approval, because stdio tests execute local commands.
+10. Write only after confirmation.
 
-Convenience commands such as `mooctl import --from codex` or `--from claude` may be added after their paths and formats are verified. MOO must not scan a home directory or import every configuration silently.
+Convenience commands such as `mooctl import --from codex` or `--from claude` may be added after their paths and formats are verified. MOO must not broadly scan a home directory, inspect unselected clients, import every detected server, or change another client's configuration silently.
+
+After import, MOO offers to test the selected connections and gives actionable results:
+
+```text
+filesystem   connected        11 tools
+github       connected        26 tools
+company-crm  sign-in required
+
+Next:
+  1. Sign in to company-crm
+  2. Discover connected servers
+  3. Add another server
+```
 
 ## 4. Discover the estate
 
