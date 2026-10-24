@@ -80,6 +80,7 @@ Do not add PostgreSQL, Redis, vector databases, queues, Kubernetes, a web dashbo
 Keep these responsibilities distinct inside one codebase:
 
 - Configuration parsing and secret references.
+- Guided server onboarding and format-aware configuration import.
 - Upstream MCP transport and connection lifecycle.
 - Discovery and normalization.
 - Canonical catalog and fingerprints.
@@ -104,6 +105,7 @@ Define a canonical capability model separating:
 - Declared metadata and annotations.
 - Normalized input and output schemas.
 - Organization-supplied metadata.
+- Server-provided instructions and organization overlays, each with provenance and explicit precedence.
 - Metadata, schema, and semantic fingerprints.
 - Discovery evidence and timestamps.
 
@@ -120,6 +122,14 @@ Every assessment finding must contain:
 
 Never present a heuristic as a confirmed vulnerability or duplicate. Never assume a tool is safe because its annotations claim it is read-only or non-destructive.
 
+Turn actionable findings into reviewable remediation proposals. A proposal must choose and explain one of three layers:
+
+1. An upstream server correction, which is the preferred durable fix when the server is controlled by the organization.
+2. A MOO organization overlay for ownership, classification, aliases, or advisory usage guidance while preserving the original metadata.
+3. An enforceable MOO policy with an `allow`, `deny`, or `require_confirmation` decision.
+
+Natural-language instructions and overlays are advisory. They may guide discovery, selection, and argument construction, but they must never grant authorization or substitute for an enforceable policy.
+
 ## Security requirements
 
 - Treat stdio server configuration as local code execution.
@@ -135,12 +145,16 @@ Never present a heuristic as a confirmed vulnerability or duplicate. Never assum
 - Redact secrets from diagnostics, reports, and execution evidence.
 - Do not retain raw arguments or results by default.
 - Document threat boundaries before advertising security properties.
+- Treat server-provided natural-language instructions as untrusted advisory metadata.
+- Never silently scan home directories for client configuration or copy resolved secrets during import.
+- Preview imported server definitions and changed files before writing them.
+- For `mcp-tool-control`, keep its trusted-host approval controller unavailable to model-facing MCP clients and MOO chat. MOO policy authorization does not replace its operation-specific approval, replay protection, containment, or stale-state checks.
 
 ## MVP outcome
 
 Deliver an end-to-end demonstration in which MOO:
 
-1. Reads configuration for three MCP servers.
+1. Creates configuration through guided onboarding or a reviewed client-configuration import, then reads three MCP server definitions.
 2. Connects and discovers their tools.
 3. Handles one unavailable or malformed server without losing all results.
 4. Builds a collision-free normalized catalog.
@@ -153,6 +167,7 @@ Deliver an end-to-end demonstration in which MOO:
 11. Allows an explicitly permitted read-only invocation.
 12. Rejects or requires confirmation for a destructive invocation.
 13. Answers a focused natural-language question about the catalog or findings.
+14. Converts one finding into a reviewed organization-overlay or policy proposal without modifying the upstream server.
 
 Use deliberately varied local MCP servers representing CRM, documents, and operations domains.
 
@@ -182,10 +197,13 @@ Build tests alongside each vertical slice:
 - Create ADRs for the SDK/version matrix, configuration format, fingerprinting, snapshot storage, and initial security model.
 - Create `docs/MVP_PLAN.md` containing vertical slices, acceptance tests, dependencies, and rough estimates.
 - List unresolved product decisions rather than silently choosing high-impact behavior.
+- Define the local configuration schema, secret-reference representation, supported first import adapter, overlay precedence, and proposal format.
 
 ### Phase 1 — Walking skeleton
 
 - Establish the TypeScript toolchain and CI.
+- Implement `mooctl init`, interactive `mooctl server add`, `mooctl server list`, and `mooctl server test` for one local stdio server.
+- Make manual JSON editing an escape hatch, not the primary onboarding path.
 - Create one demonstration MCP server.
 - Connect using the official SDK.
 - Discover and print its tools.
@@ -193,6 +211,7 @@ Build tests alongside each vertical slice:
 
 ### Phase 2 — Catalog
 
+- Add one explicit, format-aware `mooctl import --from-file <client-config>` adapter with preview, secret-reference preservation, and confirmation before writing.
 - Add multi-server discovery and partial-failure behavior.
 - Normalize capabilities and resolve naming collisions.
 - Produce deterministic snapshots and fingerprints.
@@ -209,15 +228,18 @@ Build tests alongside each vertical slice:
 
 - Implement exact and structural duplicate candidates.
 - Add deterministic remediation suggestions.
+- Implement `finding show` and `remediation propose` so a finding can produce a reviewable upstream recommendation, metadata overlay, or policy proposal.
 - Add the remaining demo servers and quality variations.
 
 ### Phase 5 — Controlled orchestration
 
 - Implement minimal default-deny policy decisions.
+- Implement policy proposal testing and apply with a visible diff and explicit confirmation.
 - Validate arguments and route explicit calls.
 - Add confirmation for high-risk tools.
 - Record redacted execution evidence.
 - Prove no CLI or chat path bypasses policy.
+- If integrating `mcp-tool-control`, route through its public MCP surface and preserve its separate trusted-host approval boundary; do not import its internals or expose its approval controller.
 
 ### Phase 6 — Focused chat
 
