@@ -9,7 +9,7 @@
 
 ## 1. Product definition
 
-MOO is an open-source MCP capability operations and orchestration workbench. It connects to an organization's Model Context Protocol servers, creates a normalized inventory of their capabilities, assesses their quality and risk, recommends concrete improvements, and provides a controlled interface for exploring and invoking approved tools.
+MOO is an open-source MCP capability operations and orchestration workbench. Release 0.1 creates a workspace-scoped evidence view from explicitly enrolled Model Context Protocol sources; it must never imply that one workspace represents the organization's complete estate. MOO normalizes discovered capabilities, assesses their quality and risk, recommends concrete improvements, and later provides a controlled interface for exploring and invoking approved tools.
 
 The product has three pillars:
 
@@ -77,7 +77,8 @@ The system must:
 - Make consent-based detection of MCP servers already configured in supported clients the default onboarding choice.
 - Inspect only disclosed, documented configuration locations for clients selected by the user; never perform a silent or broad filesystem scan.
 - Provide `mooctl server add`, `mooctl server test`, `mooctl server list`, and `mooctl server remove` workflows.
-- Let users paste a command, package invocation, remote URL, or configuration snippet and convert recognized input into a reviewed server definition.
+- Accept only defined input grammars: an MCP URL, a supported JSON configuration, an explicit executable-plus-arguments form, or a curated package-runner shorthand.
+- Reject shell operators, redirection, substitutions, environment-variable prefixes, and ambiguous quoting rather than guessing how to parse them.
 - Parse pasted commands into an executable and argument array without invoking a shell by default.
 - Show the exact executable, arguments, working directory, and known package-download or network implications before any test.
 - Require a separate confirmation before downloading packages, starting a process, or testing an imported stdio command.
@@ -86,18 +87,23 @@ The system must:
 - Import server definitions from a user-selected MCP client configuration file through explicit, format-aware adapters. Imports must be previewed and must not copy resolved credentials.
 - Preserve environment-variable and credential-provider references when importing. If credentials cannot be reused, import the definition with a clear credential-setup or missing-credential action.
 - Require confirmation before testing a detected stdio server because doing so executes its configured local command.
-- Support three source modes: linked configuration that can be re-read for drift, imported definitions copied into MOO, and temporary inspect-only discovery.
+- Support three source modes: linked configuration that can be re-read for drift, imported definitions copied into MOO, and temporary non-retained discovery. Temporary discovery still requires separate execution consent for stdio servers.
 - Record source provenance and management mode for every server definition.
 - Keep sensitive or machine-specific source paths out of portable reports and committed configuration; store a redacted or adapter-relative locator where possible.
 - Resolve relative commands and working directories against the source configuration's documented base directory before previewing an import.
 - Report source-definition drift separately from discovered capability drift. A linked change to a command, URL, working directory, or credential reference must be reviewed before MOO executes or adopts it.
+- Keep the last observed linked definition separate from the last accepted definition. Testing and discovery must use only the accepted normalized definition.
+- Bind execution approval to the accepted definition fingerprint and reject execution if the source or resolved launch definition changed after review.
 - Treat removal according to management mode: detach linked definitions, delete only MOO-managed or imported definitions, and never edit an external client configuration.
-- Load server definitions from a version-controlled YAML or JSON file.
+- Persist per-source selections and exclusions so refreshing a linked source does not silently re-add a deliberately removed entry. `source unlink` detaches the entire external source.
+- Load server definitions from version-controlled JSON in 0.1. YAML is explicitly deferred until a demonstrated user need justifies another parser and representation.
 - Connect to multiple MCP servers using the official TypeScript SDK.
 - Support local stdio and Streamable HTTP transports.
 - Support environment-referenced headers or bearer credentials without persisting resolved secrets.
 - Discover tools from each configured server.
+- Follow MCP pagination until completion, subject to configurable page, item, byte, and deadline limits; detect repeated or malformed cursors.
 - Record connection failures without discarding successful results from other servers.
+- Record per-server enumeration completeness. A failed or partial enumeration must be classified as unknown or unobserved and must never create false removal findings.
 - Normalize discovered tools into a canonical internal representation.
 - Namespace tools to prevent collisions across servers.
 - Save deterministic JSON catalog snapshots.
@@ -132,9 +138,10 @@ Release 0.2 should provide a narrow proof of orchestration:
 - Resolve a canonical capability identifier to its originating server.
 - Validate invocation arguments against the discovered input schema.
 - Apply a simple default-deny allow/deny policy before execution.
+- Keep visibility decisions (`visible` or `hidden`) separate from invocation decisions (`allow`, `deny`, or `require_confirmation`).
 - Forward an explicitly selected call to the correct upstream server.
 - Preserve the upstream MCP result and error distinction.
-- Record redacted invocation metadata: capability fingerprint, decision, status, and latency.
+- Record redacted invocation metadata: structured capability identity, complete-record and schema fingerprints, decision, status, and latency.
 - Require explicit confirmation for destructive or high-risk capabilities.
 
 Release 0.2 must not perform autonomous multi-step planning.
@@ -158,7 +165,7 @@ mooctl remediation propose <finding-id>
 
 `remediation propose` must explain which layer is recommended and why. In 0.1, proposals are reviewable artifacts and are not runtime enforcement. Policy testing and application arrive with governed invocation in 0.2. No remediation command may modify an upstream server automatically.
 
-Every proposal must record the source server plus the capability and schema fingerprints on which it was based. Testing or applying a stale proposal in 0.2 must fail closed and require regeneration or an explicit reviewed migration.
+Every proposal must record the source server and the basis fingerprints relevant to its layer: schema fingerprints for schema corrections, metadata fingerprints for descriptions or overlays, source-definition fingerprints for connection recommendations, and complete-record fingerprints when multiple dimensions matter. Testing or applying a stale proposal in 0.2 must fail closed and require regeneration or an explicit reviewed migration.
 
 ### 5.5 Planned conversational exploration — 0.3
 
@@ -176,6 +183,8 @@ The conversational layer must use structured catalog and assessment data as its 
 
 An LLM provider must be optional. Discovery, assessment, reporting, policy, and direct invocation must work without one.
 
+In 0.3, server instructions, descriptions, errors, and results must enter model context only as size-bounded, provenance-labeled untrusted data. They must never be spliced into privileged prompts. Model-produced calls and proposals require deterministic schema validation, and model output can never satisfy human confirmation.
+
 ## 6. Canonical concepts
 
 ### Server record
@@ -186,11 +195,14 @@ An LLM provider must be optional. Discovery, assessment, reporting, policy, and 
 - Transport configuration with secret references, never resolved values.
 - Discovered protocol and capability metadata.
 - Configuration source, source adapter, and management mode: linked, imported, or MOO-managed.
-- Last observed source fingerprint for linked-source drift detection.
+- Last observed normalized definition and fingerprint for linked-source drift detection.
+- Last accepted normalized definition and fingerprint used for testing and discovery.
+- Review status when observed and accepted definitions differ.
 
 ### Capability record
 
-- Logical capability ID: configured server ID plus original tool name.
+- Logical capability identity as a structured tuple of configured server ID and original tool name.
+- Reversibly encoded CLI/display identifier; dotted display strings must never be used as an ambiguous identity or hashing input.
 - Original and namespaced names.
 - Description and annotations.
 - Normalized input schema.
@@ -211,12 +223,17 @@ Logical identity and version fingerprints must remain separate. A description ed
 
 - Observation timestamp and run identifier.
 - Per-server reachability, protocol era, duration, and failure classification.
+- Per-server enumeration completeness: complete, partial, failed, or not attempted.
 - Reference to the deterministic catalog snapshot fingerprint.
 - Stored outside the canonical content so repeated identical discovery produces the same catalog fingerprint.
 
+Snapshot comparison must report removal only when the relevant server was completely enumerated in both observations. Otherwise the state is unknown or unobserved. The last-known catalog may be displayed for context but must not be presented as current evidence.
+
 ### Assessment finding
 
-- Stable rule ID and version.
+- Stable rule ID and separately recorded rule version.
+- Stable finding key derived from the rule ID (not its version), structured subject identity, and deterministic evidence key, so the same issue can be tracked across rule-pack upgrades.
+- Versioned finding occurrence containing the rule version, observation ID, and basis fingerprints. Suppressions target the stable finding key and may optionally constrain a rule-version range or expiry.
 - Affected server or capability.
 - Category and severity.
 - Finding kind: protocol, confirmed, heuristic, or profile.
@@ -225,6 +242,20 @@ Logical identity and version fingerprints must remain separate. A description ed
 - Expected and observed conditions.
 - Recommended remediation.
 - Suppression state and rationale.
+- Basis fingerprints and suppression matching/expiration metadata.
+
+### Report provenance manifest
+
+Every report must include:
+
+- MOO version and build identifier.
+- Report schema version.
+- Rule-pack IDs and versions.
+- Quality-profile and project-configuration fingerprints.
+- Source-adapter versions.
+- Exact MCP SDK package/version once per report, plus the negotiated protocol era and revision for every server observation.
+- Catalog snapshot fingerprint and discovery observation ID.
+- Finding counts by status, including suppressed, skipped, and failed rules.
 
 ### Governance decision — planned for 0.2
 
@@ -252,6 +283,10 @@ mooctl source detect --client <client>
 mooctl source link --from <client> [--dry-run]
 mooctl source import --from <client> [--dry-run]
 mooctl source import --file <client-config>
+mooctl source refresh <source>
+mooctl source diff <source>
+mooctl source accept <source> [--server <id>]
+mooctl source unlink <source>
 mooctl server add
 mooctl server test <server>
 mooctl server list
@@ -265,9 +300,9 @@ mooctl finding show <finding-id>
 mooctl remediation propose <finding-id>
 ```
 
-Planned 0.2 commands include `policy check`, `policy test`, `policy apply`, and `tool call`. `mooctl chat` is planned for 0.3.
+Planned 0.2 commands include `policy init`, `policy check`, `policy test`, `policy apply`, and `tool call`. `mooctl chat` is planned for 0.3.
 
-Commands must support machine-readable output where appropriate and must not mix protocol traffic with diagnostic output.
+Commands must support global `--json` and `--no-input` behavior where applicable. Machine-readable data goes to stdout, diagnostics go to stderr, and stable documented exit codes identify failure classes. When required consent is unavailable under `--no-input`, the command must refuse safely. A generic `--yes` must never implicitly authorize package download or process execution.
 
 ## 8. Quality profiles
 
@@ -285,15 +320,32 @@ Profiles define organizational expectations without pretending every preference 
 
 Profiles must be versionable and included in report provenance.
 
+### Initial 0.1 rule pack
+
+The first release implements these independently testable rules, each with positive and counterexample fixtures:
+
+1. Missing or blank tool description as a confirmed metadata finding; vague or low-information descriptions require a separately identified heuristic rule.
+2. Broad object input with no declared properties or constraints, or unrestricted additional properties, using explicit deterministic predicates.
+3. Collision after canonical name normalization.
+4. Risky-name and safety-annotation mismatch, reported only as a heuristic.
+5. Missing ownership, reported as an organization-profile finding.
+
+Structural overlap remains a comparison candidate and does not count as one of the five assessment rules.
+
 ## 9. Security and trust boundaries
 
 - MCP server definitions are security-sensitive configuration.
 - Starting a stdio server executes a local command and must be treated as code execution.
 - Pasted or imported command text must not be passed through a shell unless an explicit advanced mode is designed, documented, and separately confirmed.
 - Package-manager invocations may download and execute third-party code and require a distinct, informed confirmation.
+- Resolve and display the executable path where possible, and document PATH lookup, symlink, package-manager shim, and Windows/POSIX launcher behavior.
+- Spawn stdio servers with a minimal environment containing only documented runtime essentials and explicitly selected variable names. Do not inherit unrelated parent-process secrets.
 - Remote endpoints, descriptions, schemas, results, and errors are untrusted.
+- Sanitize terminal control characters and ANSI escape sequences from untrusted output. Bound schema depth, item counts, rendered diagnostics, links, and payload sizes.
 - Credentials must be externally referenced and never persisted in snapshots.
-- Remote connections need explicit timeouts, size limits, redirect behavior, and TLS expectations.
+- Streamable HTTP rejects credentials embedded in URLs, verifies TLS certificates and hostnames, disables redirects by default, and never forwards an authorization header across origins. If redirects are explicitly enabled, each hop is capped, resolved, and revalidated against the endpoint policy before following it.
+- Proxies require explicit configuration and are recorded in redacted observation provenance. Connect, read, overall, response-size, and stream limits must have secure finite defaults and configurable upper bounds.
+- Loopback and private-network endpoints remain usable for enterprise MCP, but must be explicitly configured; DNS results are revalidated at connection time to prevent a reviewed public target from resolving to a disallowed address class.
 - Tool arguments must be validated before forwarding.
 - Visibility filtering and execution authorization are separate checks.
 - Protocol compliance must never be presented as proof of safety.
@@ -312,7 +364,7 @@ Profiles must be versionable and included in report provenance.
 
 ### Compatibility
 
-- Use the current stable official MCP TypeScript SDK.
+- Before implementation, record the exact official MCP TypeScript SDK package/version, Node.js matrix, supported protocol eras, and lockfile policy in an ADR; do not depend on an unpinned notion of "current stable."
 - Document supported MCP protocol eras and SDK versions.
 - Maintain integration fixtures for supported transports.
 - Surface unsupported or malformed behavior clearly.
@@ -328,8 +380,9 @@ Profiles must be versionable and included in report provenance.
 ### Performance
 
 - Discovery should operate concurrently with configurable limits.
-- The CLI should remain responsive for at least 100 servers and 5,000 tools using synthetic fixtures if needed.
+- On the release reference environment (4 logical CPU cores, 8 GiB RAM, supported Node.js LTS, and local SSD), local processing of a synthetic complete catalog containing 100 servers and 5,000 tools must emit progress within 1 second, complete normalization, assessment, and snapshot serialization within 10 seconds, complete a snapshot diff within 5 seconds, and remain below 512 MiB peak RSS. Network discovery time is excluded and reported separately.
 - Expensive semantic analysis must not be required for baseline assessment.
+- Phase 0 must define a reproducible reference environment and budgets for normalization, assessment, snapshot serialization/diff, peak memory, and progress reporting. Network discovery time is measured separately from local processing.
 
 ### Privacy
 
@@ -337,6 +390,7 @@ Profiles must be versionable and included in report provenance.
 - Telemetry is opt-in.
 - Reports show which fields were redacted or omitted.
 - Literal credentials encountered while parsing an explicitly authorized source must remain in memory only for the minimum processing period and must never be logged, displayed, snapshotted, proposed, or persisted by MOO.
+- Literal secrets found in linked or imported configurations are not reusable by default. The server remains non-runnable until the user supplies an environment or approved credential-provider reference.
 
 ### Project and runtime state
 
@@ -345,7 +399,7 @@ Profiles must be versionable and included in report provenance.
 - `moo/proposals/` contains reviewable remediation artifacts and may be committed.
 - `.moo/cache/` and `.moo/runs/` are disposable local state and ignored by default.
 - `.moo/reports/` is ignored by default and exported explicitly for CI or review.
-- `.moo/snapshots/` retention is configurable; canonical snapshot content remains deterministic regardless of filename or observation time.
+- `.moo/snapshots/` is ignored by default because capability metadata may be sensitive. Retention and sanitized export or commit are explicit opt-ins; canonical content remains deterministic regardless of filename or observation time.
 
 ### Evidence vocabulary
 
@@ -381,6 +435,10 @@ Profiles must be versionable and included in report provenance.
 - Snapshot and report-format tests.
 - Tests proving timestamps and run metadata do not change canonical snapshot fingerprints.
 - Tests proving pasted commands are executed as an executable plus arguments without implicit shell interpretation.
+- Tests proving unrelated parent-process environment secrets are not inherited by stdio servers.
+- Tests for hostile terminal metadata, ANSI escapes, oversized and deeply nested schemas, and malformed or repeated pagination cursors.
+- Tests proving incomplete server enumeration produces unknown status rather than false removal.
+- Tests for structured capability identity and reversible CLI encoding.
 - End-to-end demonstration of onboarding, discovery, drift, a finding, and a reviewed remediation proposal.
 
 Policy, routing, argument-validation, direct-call bypass, confirmation, and fail-closed invocation tests become required in 0.2.
@@ -465,7 +523,7 @@ Release 0.1 is complete when:
 - Findings contain evidence, severity, confidence, and remediation.
 - A versioned quality profile changes findings, severities, or CI thresholds without modifying an upstream server.
 - A suitable finding can produce a reviewable overlay or policy proposal with provenance.
-- Every proposal records the capability and schema fingerprints on which it was based so stale proposals can be detected.
+- Every proposal records the basis fingerprints required by its remediation layer, and stale-basis tests cover schema, metadata, source-definition, and complete-record proposals.
 - Reports serve humans and CI automation.
 - Core functionality works without an LLM or hosted service.
 - Setup and demonstration instructions work from a clean checkout.
@@ -474,12 +532,14 @@ Release 0.1 is complete when:
 
 Before committing to a production gateway or formal standard, validate that:
 
-- At least three real MCP estates can be assessed.
+- At least three independently operated real MCP estates can be assessed, with at least five participating maintainers in total and at least 100 human-reviewed finding decisions across the pilots.
 - High-severity findings achieve at least 70% maintainer acceptance in pilots.
-- At least half of deterministic remediation suggestions are useful.
+- At least half of a minimum sample of 20 deterministic remediation suggestions are useful.
 - Snapshot comparison catches a meaningful regression.
 - One organization requests CI integration.
 - MOO reveals information not already supplied by the organization's gateway or scanner.
+
+For these gates, a finding is "accepted" only when a maintainer judges its evidence correct and its issue actionable without a substantive correction. A remediation is "useful" only when a maintainer would adopt it or says it materially shortens the work needed to resolve the finding. The pilot protocol must preserve these definitions, recruit at least two maintainers per estate where practical, and define sampling before results are collected. It must measure correctness and false-positive rate per rule, remediation usefulness, time to first catalog, time to triage, meaningful regressions found, and unique information beyond existing tools. Labels and denominators must be preserved with the results.
 
 If organizations care only about access control and vulnerability scanning, integrate with or contribute to existing gateway/scanner projects instead of expanding into a competing platform.
 
@@ -497,20 +557,25 @@ If organizations care only about access control and vulnerability scanning, inte
 
 Standardization should begin with implementation-independent JSON schemas for capability records, findings, profiles, fingerprints, and evidence. Wire-level MCP extensions should wait for demonstrated interoperability needs across multiple implementations.
 
+No MOO-internal schema should be presented as a standard until at least two independent producers or consumers have implemented it, concrete interoperability failures are documented, compatibility tests and versioning rules exist, a neutral schema namespace is available, and a public RFC/change process is defined.
+
 ## 19. Open decisions
 
 - Supported protocol-version matrix for the first release.
 - Package manager and Node.js support policy.
-- YAML versus JSON for human-authored configuration.
+- Evidence required before adding YAML or another human-authored configuration format after 0.1.
 - JSON Schema normalization and fingerprint canonicalization.
 - Files only versus SQLite for local history.
 - Chat provider abstraction for the planned 0.3 release.
 - Confirmation UX for interactive and non-interactive execution.
-- Initial rules and required evidence for confirmed versus heuristic findings.
+- Severity, confidence, and evidence thresholds for the selected initial five-rule pack, including calibration criteria for confirmed versus heuristic findings.
 - Final project, package, and CLI naming after namespace and trademark checks.
 - Which MCP client configuration formats are supported by the first import adapters.
-- Whether the first supported source defaults to linked, imported, or inspect-only mode.
+- Whether the first supported source defaults to linked, imported, or temporary non-retained mode.
 - How duplicate definitions found across multiple clients are identified without silently merging distinct servers.
 - The exact merge rules and precedence for original metadata, organization overlays, and server-provided instructions.
 - Whether MCP OAuth-client support belongs in 0.2 or a later release; 0.1 may require external credential references.
 - Whether `mcp-tool-control` integration is demonstrated in 0.2 or a later milestone.
+- Exact numeric Streamable HTTP timeout, size, stream, and redirect caps within the secure behavior required above.
+- Whether release benchmark budgets need additional platform-specific profiles beyond the defined reference environment.
+- Final name and namespace clearance is a pre-alpha publication gate because it controls package names, schema URLs, and public documentation identity.

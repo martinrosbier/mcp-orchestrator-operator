@@ -65,12 +65,12 @@ Create local commits at coherent milestones when the user has authorized impleme
 Use:
 
 - TypeScript and Node.js.
-- The current stable official MCP TypeScript SDK.
+- The exact official MCP TypeScript SDK version and Node.js matrix selected in an ADR and locked reproducibly.
 - Strict TypeScript compiler settings.
 - A mature schema-validation library compatible with the SDK.
 - Vitest unless a clearly better option is justified.
 - A CLI-first interface.
-- JSON catalog snapshots and configuration initially; YAML may be added after documenting the decision.
+- JSON catalog snapshots and configuration for 0.1; YAML is deferred until measured user need justifies it.
 - Real MCP protocol interactions for integration tests wherever practical.
 
 Do not add PostgreSQL, Redis, vector databases, queues, Kubernetes, a web dashboard, or a hosted dependency to release 0.1 without written evidence that a validated requirement cannot be met more simply.
@@ -80,8 +80,9 @@ Do not add PostgreSQL, Redis, vector databases, queues, Kubernetes, a web dashbo
 Keep these responsibilities distinct inside one codebase:
 
 - Configuration parsing and secret references.
-- Guided server onboarding, consent-based client detection, paste-based setup, and format-aware configuration import.
-- Linked, imported, and inspect-only configuration-source modes with provenance and drift behavior.
+- Guided server onboarding, consent-based client detection, defined paste-input grammars, and format-aware configuration import.
+- Linked, imported, and temporary non-retained configuration-source modes with provenance and drift behavior.
+- Separate observed and accepted linked-source definitions; only accepted fingerprints may be executed.
 - Upstream MCP transport and connection lifecycle.
 - Discovery and normalization.
 - Canonical catalog and fingerprints.
@@ -99,7 +100,7 @@ Do not create empty abstractions or directories to match a diagram. Introduce a 
 
 Define a canonical capability model separating:
 
-- Logical identity.
+- Logical identity as a structured server-ID/tool-name tuple with reversible CLI encoding.
 - Source server and provenance.
 - Original and collision-free names.
 - Declared metadata and annotations.
@@ -124,6 +125,8 @@ Never present a heuristic as a confirmed vulnerability or duplicate. Never assum
 
 Release 0.1 assesses declared contracts, configuration, reachability, and discovery evidence only. Do not claim observed runtime behavior, result quality, reliability, latency, or usage without invocation or telemetry evidence.
 
+Implement the initial rules for inadequate descriptions, unconstrained broad inputs, normalized-name collisions, risky-name/annotation mismatch as a heuristic, and missing ownership as a profile finding. Structural overlap is a comparison candidate rather than an assessment rule.
+
 Turn actionable findings into reviewable remediation proposals. A proposal must choose and explain one of three layers:
 
 1. An upstream server correction, which is the preferred durable fix when the server is controlled by the organization.
@@ -136,8 +139,13 @@ Natural-language instructions and overlays are advisory. They may guide discover
 
 - Treat stdio server configuration as local code execution.
 - Parse pasted commands into an executable and argument array; do not invoke a shell by default.
+- Accept only documented URL, JSON, explicit argv, and curated package-runner input grammars. Reject shell operators and ambiguous quoting.
+- On Windows, do not claim `.cmd` or `.bat` shims are native no-shell execution. A curated package-runner adapter must resolve and display the actual native runtime, runner module, and argv that will be spawned.
 - Require separate informed confirmation before package download or process execution.
+- Bind approval to the exact accepted launch-definition fingerprint and reject review-to-execution changes.
+- Use a minimal child environment and pass only documented runtime essentials plus explicitly selected variable names.
 - Treat server metadata, schemas, results, and errors as untrusted.
+- Sanitize terminal control sequences and bound schema depth, pagination, payloads, and diagnostic rendering.
 - Never persist resolved credentials.
 - Validate invocation arguments before forwarding.
 - Enforce execution authorization independently from discovery visibility.
@@ -153,6 +161,7 @@ Natural-language instructions and overlays are advisory. They may guide discover
 - Never perform a silent or broad filesystem scan for client configuration. Inspect only disclosed known locations for explicitly selected clients and only after consent.
 - Never copy resolved secrets during import.
 - If an authorized configuration contains a literal credential, keep it only in memory for the minimum parsing period and never log, display, snapshot, propose, or persist it.
+- Do not reuse a literal credential from a detected or linked configuration by default; require conversion to an environment or approved credential-provider reference before execution.
 - Preview imported server definitions and changed files before writing them.
 - For `mcp-tool-control`, keep its trusted-host approval controller unavailable to model-facing MCP clients and MOO chat. MOO policy authorization does not replace its operation-specific approval, replay protection, containment, or stale-state checks.
 
@@ -185,8 +194,12 @@ Build tests alongside each vertical slice:
 - Invalid and changing schemas.
 - Every assessment rule and a valid counterexample.
 - Stale-proposal detection when capability or schema fingerprints change.
+- Stable finding identity and suppression matching.
 - Duplicate and structural-similarity behavior.
 - Connection failures, timeouts, malformed responses, and process cleanup.
+- Complete pagination, repeated-cursor protection, and partial-enumeration behavior.
+- Three-state diff behavior that never converts an unobserved server into removals.
+- Minimal child-environment tests proving unrelated secrets are not inherited.
 - Real local MCP integration tests.
 - End-to-end onboarding, discovery, drift, finding, and remediation-proposal demonstrations.
 
@@ -217,14 +230,16 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 ### Phase 2 — Catalog
 
 - Add `mooctl source detect --client <client>` and one explicit, format-aware client adapter that inspects only disclosed known locations after consent.
-- Keep detection candidates ephemeral unless the user chooses linked or imported management.
+- Keep `source detect` preview-only. `source link` and `source import` must independently re-detect and re-preview; the interactive initializer may complete detection and selection in one process.
 - Add `mooctl source link --from <client>` for read-only external configuration sources with explicit provenance and drift behavior.
+- Add source refresh, diff, and accept workflows with distinct observed and accepted fingerprints.
 - Add `mooctl source import --from <client>` and `mooctl source import --file <client-config>` with individual selection, preview, secret-reference preservation, base-directory resolution, and confirmation before writing.
 - Add multi-server discovery and partial-failure behavior.
 - Normalize capabilities and resolve naming collisions.
 - Produce deterministic snapshots and fingerprints.
 - Store timestamps, latency, outcomes, and run identifiers in separate discovery observations that reference canonical snapshot fingerprints.
 - Add snapshot diffing.
+- Treat server coverage as part of every observation and report removal only after complete enumeration.
 
 ### Phase 3 — Assessment
 
@@ -232,6 +247,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 - Add the first high-value deterministic rules.
 - Generate evidence-backed findings.
 - Add profiles, suppressions, terminal output, and JSON reporting. Defer SARIF-compatible output until CI demand is validated.
+- Include a complete report provenance manifest with build, schema, rule-pack, profile, configuration, adapter, SDK, snapshot, and observation identifiers.
 
 ### Phase 4 — Comparison and improvement
 
@@ -254,6 +270,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 
 - Add an optional conversational interface over application APIs.
 - Ground answers in structured catalog, snapshot, and finding data.
+- Pass server-controlled content to the model only as size-bounded, provenance-labeled untrusted data, never as privileged instructions.
 - Keep the model outside the authorization boundary.
 - Route requested calls through the same explicit invocation service.
 - Keep all core functionality usable without an LLM.
@@ -261,7 +278,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 ### Release validation and preparation
 
 - Run the full demonstration from a clean checkout.
-- Measure performance on a synthetic large estate.
+- Measure the 100-server/5,000-tool fixture against the reference-environment gates in `docs/REQUIREMENTS.md`, recording progress latency, normalization/assessment/serialization time, diff time, and peak RSS separately from network discovery.
 - Document limitations and threat boundaries.
 - Prepare contributor, security, and release documentation.
 - Do not claim production readiness without evidence.
