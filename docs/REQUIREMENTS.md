@@ -72,6 +72,11 @@ The MVP is a TypeScript CLI with a reusable application core. A lightweight inte
 
 The system must:
 
+- Provide a guided `mooctl init` workflow that creates a valid local project configuration without requiring users to know its schema.
+- Provide `mooctl server add`, `mooctl server test`, `mooctl server list`, and `mooctl server remove` workflows.
+- Let users add stdio servers by command and arguments and HTTP servers by URL, protocol era, and secret references.
+- Preview and validate configuration changes before writing them.
+- Import server definitions from a user-selected MCP client configuration file through explicit, format-aware adapters. Imports must be previewed and must not copy resolved credentials.
 - Load server definitions from a version-controlled YAML or JSON file.
 - Connect to multiple MCP servers using the official TypeScript SDK.
 - Support local stdio and Streamable HTTP transports.
@@ -100,6 +105,8 @@ The system must:
 - Generate terminal, JSON, and SARIF-compatible reports.
 - Produce concrete suggested changes where correction is deterministic.
 - Exit with configurable status codes for CI use.
+- Convert suitable findings into reviewable local remediation proposals, including metadata overlays, policy rules, or upstream code/configuration suggestions.
+- Never silently apply a finding recommendation to an upstream MCP server.
 
 ### 5.3 Orchestrate and govern
 
@@ -116,7 +123,28 @@ The MVP must provide a narrow proof of orchestration:
 
 The MVP must not perform autonomous multi-step planning.
 
-### 5.4 Conversational exploration
+### 5.4 Remediation layers
+
+MOO must distinguish three ways to improve or constrain a capability:
+
+1. **Upstream correction:** fix the MCP server's source, schema, descriptions, annotations, or authorization. This is the preferred durable solution when the organization controls the server.
+2. **Organization overlay:** attach organization-owned classification, ownership, guidance, aliases, or improved display metadata without claiming the upstream server supplied it. Overlays must preserve original discovered values and provenance.
+3. **Enforceable policy:** define visibility and invocation decisions such as allow, deny, or require confirmation. Policies are evaluated by MOO and cannot be replaced by natural-language instructions.
+
+MOO may ingest the optional natural-language `instructions` supplied by modern MCP servers during discovery. Those instructions are untrusted advisory content for model usage and must not affect authorization or safety decisions.
+
+For suitable findings, MOO should support a reviewed workflow such as:
+
+```text
+mooctl finding show <finding-id>
+mooctl remediation propose <finding-id>
+mooctl policy test --proposal <file>
+mooctl policy apply --proposal <file>
+```
+
+`remediation propose` must explain which layer is recommended and why. `policy apply` modifies only MOO-owned local configuration, requires an explicit review or confirmation, and must never modify an upstream server.
+
+### 5.5 Conversational exploration
 
 Users should be able to ask:
 
@@ -190,13 +218,23 @@ Logical identity and version fingerprints must remain separate. A description ed
 
 ```text
 mooctl config validate
+mooctl init
+mooctl import --from-file <client-config>
+mooctl server add
+mooctl server test <server>
+mooctl server list
+mooctl server remove <server>
 mooctl discover
 mooctl servers
 mooctl tools
 mooctl assess
 mooctl diff [snapshot-a] [snapshot-b]
 mooctl findings
+mooctl finding show <finding-id>
+mooctl remediation propose <finding-id>
 mooctl policy check <capability>
+mooctl policy test --proposal <file>
+mooctl policy apply --proposal <file>
 mooctl call <capability> --args <json>
 mooctl chat
 ```
@@ -233,6 +271,10 @@ Profiles must be versionable and included in report provenance.
 - Invocation arguments and results must not be stored by default.
 - A failed or unavailable policy check must fail closed for invocation.
 - High-risk execution requires explicit confirmation in the MVP.
+- Natural-language server instructions and organization guidance are never authorization controls.
+- A MOO gateway decision to allow a call does not prove that the upstream server controls its side effects safely.
+- For operations delegated to `mcp-tool-control`, MOO authorization must not replace its separate trusted-host approval, replay protection, or controlled-write guarantees.
+- Model-facing chat and MCP clients must never receive access to `mcp-tool-control`'s trusted approval controller.
 
 ## 10. Non-functional requirements
 
@@ -310,6 +352,7 @@ The demo must show multi-server discovery, a normalized catalog, an actionable f
 - Complete resources and prompts assessment.
 - Automatic modification of upstream servers.
 - Claiming security certification or proof of tool safety.
+- Reimplementing controlled local-write planning, approval consumption, replay prevention, filesystem containment, or stale-state protection already owned by `mcp-tool-control`.
 
 ## 14. Proposed module boundaries
 
@@ -335,7 +378,7 @@ These are package boundaries inside a modular monolith, not services. Do not cre
 ## 15. Delivery sequence
 
 1. Establish repository standards, toolchain, CI, and architecture decisions.
-2. Connect to one local server and display discovered tools.
+2. Implement guided initialization, add one local server, and display discovered tools.
 3. Connect to multiple servers and preserve partial failures.
 4. Normalize the catalog and create stable snapshots.
 5. Add fingerprints and snapshot diffing.
@@ -343,21 +386,26 @@ These are package boundaries inside a modular monolith, not services. Do not cre
 7. Add profiles, suppressions, and reports.
 8. Add duplicate and structural-overlap candidates.
 9. Add minimal policy decisions and explicit routed calls.
-10. Add the focused chat/REPL interface.
-11. Complete demonstration servers and end-to-end tests.
-12. Validate against real estates before expanding runtime functionality.
+10. Add reviewed finding-to-overlay and finding-to-policy remediation workflows.
+11. Add the focused chat/REPL interface.
+12. Add optional `mcp-tool-control` integration without crossing its trusted-host boundary.
+13. Complete demonstration servers and end-to-end tests.
+14. Validate against real estates before expanding runtime functionality.
 
 ## 16. MVP acceptance criteria
 
 The MVP is complete when:
 
 - Three configured servers can be discovered in one run.
+- A new user can initialize configuration and add or test a server without hand-writing JSON.
+- An existing supported client configuration can be imported with a preview and without copying secrets.
 - Tool-name collisions do not overwrite or ambiguously identify capabilities.
 - Repeated discovery creates stable fingerprints.
 - Meaningful schema changes appear in deterministic diffs.
 - At least ten useful deterministic rules are implemented and tested.
 - Findings contain evidence, severity, confidence, and remediation.
 - A quality profile changes enforcement without source changes.
+- A suitable finding can produce a reviewable overlay or policy proposal with provenance.
 - Reports serve humans and CI automation.
 - An allowed call routes to the correct server.
 - A denied tool cannot be invoked through any CLI or chat path.
@@ -404,3 +452,6 @@ Standardization should begin with implementation-independent JSON schemas for ca
 - Confirmation UX for interactive and non-interactive execution.
 - Initial rules and required evidence for confirmed versus heuristic findings.
 - Final project, package, and CLI naming after namespace and trademark checks.
+- Which MCP client configuration formats are supported by the first import adapters.
+- The exact merge rules and precedence for original metadata, organization overlays, and server-provided instructions.
+- Whether `mcp-tool-control` integration is demonstrated in 0.1 or the next milestone.
