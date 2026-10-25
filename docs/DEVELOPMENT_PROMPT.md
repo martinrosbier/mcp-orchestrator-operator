@@ -10,8 +10,9 @@ Work in the existing project directory. Treat this as a real open-source product
 2. Inspect the directory, repository status, existing files, repository instructions, and uncommitted changes before editing.
 3. If Git is not initialized, initialize it without creating a remote or committing. Never overwrite an existing repository.
 4. Ensure a `docs/` directory exists.
-5. Read `docs/REQUIREMENTS.md` completely. Treat it as the initial product charter, but identify contradictions, omissions, and decisions that still need validation.
-6. Do not immediately generate an entire application. Begin by converting requirements into reviewed architecture decisions and an executable vertical-slice plan.
+5. Read `docs/REQUIREMENTS.md`, `docs/USER_WORKFLOW.md`, `docs/NEXT_STEPS.md`, `docs/GIT_WORKFLOW.md`, and `docs/MCP_TOOL_CONTROL_INTEGRATION.md` completely before proposing implementation.
+6. Treat `docs/REQUIREMENTS.md` as the normative product contract, accepted ADRs as the controlling technical decisions, and the remaining documents as workflow and integration guidance. Surface conflicts instead of silently choosing one document or changing the product contract.
+7. Do not immediately generate an entire application. Begin by converting requirements into reviewed architecture decisions and an executable, test-traceable vertical-slice plan.
 
 ## Product definition
 
@@ -39,11 +40,19 @@ Release 0.1 is not merely a static linter because it connects to real MCP server
 - Keep the codebase a modular monolith until measured requirements justify something else.
 - Preserve user changes and avoid destructive Git operations.
 
+## Authority and approval gates
+
+Phase 0 may inspect the repository and create draft architecture, ADR, and planning documents. After returning the required initial response, stop and wait for explicit user approval of the blocking ADRs and first vertical slice before installing dependencies, scaffolding source code, changing the normative requirements, or creating implementation commits.
+
+If the user explicitly authorizes autonomous execution through a named milestone, continue only through that milestone and preserve every other approval boundary in this document. Evidence and an agent-authored ADR may support a scope-change request, but they never constitute approval by themselves.
+
+At later slices, stop when a decision would change the accepted product contract, add a listed deferred technology, weaken a security invariant, or materially expand the authorized milestone. Record ordinary reversible implementation choices in an ADR and proceed within the approved slice.
+
 ## Git workflow and commit discipline
 
 Use GitFlow with `main` as the stable release branch and `develop` as the integration branch. Perform normal development on short-lived branches such as `feature/<short-name>`, corrections on `fix/<short-name>`, release preparation on `release/<version>`, and urgent production corrections on `hotfix/<short-name>`.
 
-Keep commits small, human-readable, and limited to one coherent change. Do not combine scaffolding, behavior, tests, documentation, and unrelated cleanup in one large commit when they can be reviewed independently. Each commit should leave the branch understandable and, whenever practical, buildable and tested.
+Keep commits small, human-readable, and limited to one coherent change. Commit behavior with its directly supporting tests so the branch remains verified; split unrelated scaffolding, documentation, refactoring, and cleanup when they can be reviewed independently. Each commit should leave the branch understandable, buildable, and tested unless the commit is explicitly limited to documentation or inert scaffolding.
 
 Use short Conventional Commit messages:
 
@@ -68,12 +77,12 @@ Use:
 - The exact official MCP TypeScript SDK version and Node.js matrix selected in an ADR and locked reproducibly.
 - Strict TypeScript compiler settings.
 - A mature schema-validation library compatible with the SDK.
-- Vitest unless a clearly better option is justified.
+- Vitest unless an alternative is justified in an ADR and explicitly approved by the user.
 - A CLI-first interface.
 - JSON catalog snapshots and configuration for 0.1; YAML is deferred until measured user need justifies it.
 - Real MCP protocol interactions for integration tests wherever practical.
 
-Do not add PostgreSQL, Redis, vector databases, queues, Kubernetes, a web dashboard, or a hosted dependency to release 0.1 without written evidence that a validated requirement cannot be met more simply.
+Do not add PostgreSQL, Redis, vector databases, queues, Kubernetes, a web dashboard, or a hosted dependency to release 0.1 unless evidence shows that a validated requirement cannot be met more simply and the user explicitly approves the ADR. Evidence alone does not authorize the expansion.
 
 ## Architecture boundaries
 
@@ -112,20 +121,22 @@ Define a canonical capability model separating:
 
 Every assessment finding must contain:
 
-- Stable rule ID and version.
-- Affected subject.
+- Stable rule ID and separately recorded rule version.
+- Stable finding key derived from rule ID, structured subject identity, and deterministic evidence key, independent of rule version.
+- A versioned finding occurrence containing rule version, observation ID, and all applicable basis fingerprints.
+- Affected subject using the canonical structured identity.
 - Severity and confidence.
 - Finding kind: protocol, confirmed, heuristic, or organizational profile.
 - Evidence.
 - Expected and observed conditions.
 - Actionable remediation.
-- Optional documented suppression.
+- Optional documented suppression matched to the stable finding key, with rule-version constraints or expiry when supplied.
 
 Never present a heuristic as a confirmed vulnerability or duplicate. Never assume a tool is safe because its annotations claim it is read-only or non-destructive.
 
 Release 0.1 assesses declared contracts, configuration, reachability, and discovery evidence only. Do not claim observed runtime behavior, result quality, reliability, latency, or usage without invocation or telemetry evidence.
 
-Implement the initial rules for inadequate descriptions, unconstrained broad inputs, normalized-name collisions, risky-name/annotation mismatch as a heuristic, and missing ownership as a profile finding. Structural overlap is a comparison candidate rather than an assessment rule.
+Implement the initial rules for missing or blank descriptions as confirmed findings, vague descriptions only as a separately labeled heuristic, unconstrained broad inputs, normalized-name collisions, risky-name/annotation mismatch as a heuristic, and missing ownership as a profile finding. Structural overlap is a comparison candidate rather than an assessment rule.
 
 Turn actionable findings into reviewable remediation proposals. A proposal must choose and explain one of three layers:
 
@@ -135,7 +146,7 @@ Turn actionable findings into reviewable remediation proposals. A proposal must 
 
 Natural-language instructions and overlays are advisory. They may guide discovery, selection, and argument construction, but they must never grant authorization or substitute for an enforceable policy.
 
-## Security requirements
+## Security requirements for 0.1 discovery and assessment
 
 - Treat stdio server configuration as local code execution.
 - Parse pasted commands into an executable and argument array; do not invoke a shell by default.
@@ -147,15 +158,10 @@ Natural-language instructions and overlays are advisory. They may guide discover
 - Treat server metadata, schemas, results, and errors as untrusted.
 - Sanitize terminal control sequences and bound schema depth, pagination, payloads, and diagnostic rendering.
 - Never persist resolved credentials.
-- Validate invocation arguments before forwarding.
-- Enforce execution authorization independently from discovery visibility.
-- Fail closed when an invocation policy decision cannot be obtained.
-- Require explicit confirmation for destructive or high-risk calls.
-- Add connection, discovery, and invocation timeouts.
-- Limit HTTP response and tool-result sizes.
+- Add connection and discovery timeouts.
+- Limit HTTP responses, schemas, and discovery payload sizes.
 - Clean up child processes reliably.
 - Redact secrets from diagnostics, reports, and execution evidence.
-- Do not retain raw arguments or results by default.
 - Document threat boundaries before advertising security properties.
 - Treat server-provided natural-language instructions as untrusted advisory metadata.
 - Never perform a silent or broad filesystem scan for client configuration. Inspect only disclosed known locations for explicitly selected clients and only after consent.
@@ -164,6 +170,16 @@ Natural-language instructions and overlays are advisory. They may guide discover
 - Do not reuse a literal credential from a detected or linked configuration by default; require conversion to an environment or approved credential-provider reference before execution.
 - Preview imported server definitions and changed files before writing them.
 - For `mcp-tool-control`, keep its trusted-host approval controller unavailable to model-facing MCP clients and MOO chat. MOO policy authorization does not replace its operation-specific approval, replay protection, containment, or stale-state checks.
+
+## Additional security requirements when governed invocation begins in 0.2
+
+- Validate invocation arguments before forwarding.
+- Enforce execution authorization independently from discovery visibility.
+- Fail closed when an invocation policy decision cannot be obtained.
+- Require explicit confirmation for destructive or high-risk calls.
+- Add invocation deadlines and tool-result size limits.
+- Do not retain raw invocation arguments or results by default.
+- Record redacted execution evidence and prove that every implemented invocation entry point uses the same policy and routing boundary.
 
 ## Release 0.1 outcome
 
@@ -193,17 +209,36 @@ Build tests alongside each vertical slice:
 - Tool-name collisions.
 - Invalid and changing schemas.
 - Every assessment rule and a valid counterexample.
-- Stale-proposal detection when capability or schema fingerprints change.
+- Stale-proposal detection for schema, metadata, source-definition, and complete-record proposal bases.
 - Stable finding identity and suppression matching.
 - Duplicate and structural-similarity behavior.
 - Connection failures, timeouts, malformed responses, and process cleanup.
 - Complete pagination, repeated-cursor protection, and partial-enumeration behavior.
 - Three-state diff behavior that never converts an unobserved server into removals.
 - Minimal child-environment tests proving unrelated secrets are not inherited.
+- Hostile terminal metadata, ANSI escapes, oversized payloads, and deeply nested schemas.
+- Structured capability identity and reversible CLI encoding.
+- Complete report provenance, including the exact SDK package/version once per report and negotiated protocol data per server observation.
 - Real local MCP integration tests.
 - End-to-end onboarding, discovery, drift, finding, and remediation-proposal demonstrations.
 
 Policy, routing, argument-validation, bypass-prevention, confirmation, and invocation tests are required when implementing 0.2.
+
+## Plan traceability and proof
+
+`docs/MVP_PLAN.md` must demonstrate that the proposed work achieves the promised release outcome. Include a traceability table with one row for every release 0.1 outcome and every normative acceptance criterion. Each row must identify:
+
+- requirement or outcome identifier;
+- owning vertical slice;
+- intended implementation artifact;
+- test level and fixture;
+- executable verification command;
+- expected observable evidence;
+- current status.
+
+Do not accept orphan requirements, implementation tasks without a requirement, or claims whose only proof is manual inspection when an automated test is practical. Audit the plan for dependency order, critical path, security prerequisites, test-environment needs, estimate assumptions, and fallback behavior. If the plan cannot prove an outcome within the stated scope, narrow the claim or revise the plan before coding.
+
+During Phase 1, define package scripts for `format:check`, `lint`, `typecheck`, `test`, `test:integration`, and `build`. Every vertical slice must declare its acceptance tests before implementation, run the smallest relevant checks during development, and finish with all applicable standard scripts passing. Record commands and results in the slice handoff. A skipped integration test requires a named unavailable external prerequisite and does not satisfy a release gate. Release validation must run the complete suite and demonstration from a clean checkout.
 
 ## Delivery process
 
@@ -211,14 +246,15 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 
 - Audit `docs/REQUIREMENTS.md`.
 - Create `docs/ARCHITECTURE.md` with a minimal component and data-flow model.
-- Create ADRs for the SDK/version matrix, configuration format, fingerprinting, snapshot storage, and initial security model.
-- Create `docs/MVP_PLAN.md` containing vertical slices, acceptance tests, dependencies, and rough estimates.
+- Create only the ADRs needed before the walking skeleton: SDK/Node/package-manager/lockfile matrix, 0.1 JSON configuration and secret references, stdio launch behavior, canonical serialization and fingerprint basis, and initial security model.
+- Create `docs/MVP_PLAN.md` containing vertical slices, acceptance tests, dependencies, rough estimates, and the required outcome-to-test traceability table.
 - List unresolved product decisions rather than silently choosing high-impact behavior.
-- Define the local configuration schema, secret-reference representation, supported first import adapter, overlay precedence, and proposal format.
+- Define the first-slice configuration schema, secret-reference representation, stdio lifecycle, and executable acceptance test.
+- Present the Phase 0 artifacts and stop at the approval gate before Phase 1.
 
 ### Phase 1 — Walking skeleton
 
-- Establish the TypeScript toolchain and CI.
+- Establish the TypeScript toolchain, standard verification scripts, and repository CI configuration without provisioning or publishing to an external service.
 - Implement `mooctl init`, paste-friendly `mooctl server add`, `mooctl server list`, and `mooctl server test` for one local stdio server.
 - Test unsaved in-memory drafts directly in the add wizard; use `server test <id>` only for retained definitions.
 - Make manual JSON editing an escape hatch, not the primary onboarding path.
@@ -229,6 +265,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 
 ### Phase 2 — Catalog
 
+- Decide and record the first import adapter, source-management defaults, snapshot storage, observation coverage, and canonical capability identity before implementing this slice.
 - Add `mooctl source detect --client <client>` and one explicit, format-aware client adapter that inspects only disclosed known locations after consent.
 - Keep `source detect` preview-only. `source link` and `source import` must independently re-detect and re-preview; the interactive initializer may complete detection and selection in one process.
 - Add `mooctl source link --from <client>` for read-only external configuration sources with explicit provenance and drift behavior.
@@ -243,6 +280,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 
 ### Phase 3 — Assessment
 
+- Decide and record the finding occurrence, suppression, profile, rule-calibration, and report-provenance contracts before implementing this slice.
 - Implement a small rule interface.
 - Add the first high-value deterministic rules.
 - Generate evidence-backed findings.
@@ -251,6 +289,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 
 ### Phase 4 — Comparison and improvement
 
+- Decide and record overlay precedence and the layer-specific remediation proposal format before implementing this slice.
 - Implement exact and structural duplicate candidates.
 - Add deterministic remediation suggestions.
 - Implement `finding show` and `remediation propose` so a finding can produce a reviewable upstream recommendation, metadata overlay, or policy proposal.
@@ -263,7 +302,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 - Validate arguments and route explicit calls.
 - Add confirmation for high-risk tools.
 - Record redacted execution evidence.
-- Prove no CLI or chat path bypasses policy.
+- Prove no implemented invocation entry point bypasses policy.
 - If integrating `mcp-tool-control`, route through its public MCP surface and preserve its separate trusted-host approval boundary; do not import its internals or expose its approval controller.
 
 ### Release 0.3 — Focused chat
@@ -273,6 +312,7 @@ Policy, routing, argument-validation, bypass-prevention, confirmation, and invoc
 - Pass server-controlled content to the model only as size-bounded, provenance-labeled untrusted data, never as privileged instructions.
 - Keep the model outside the authorization boundary.
 - Route requested calls through the same explicit invocation service.
+- Add a chat-specific test proving conversational requests cannot bypass the shared policy and invocation service.
 - Keep all core functionality usable without an LLM.
 
 ### Release validation and preparation
@@ -294,5 +334,6 @@ Before substantial coding, return:
 5. The smallest dependency set required for that slice.
 6. Open decisions and which ones block implementation.
 7. Any proposed changes to `docs/REQUIREMENTS.md`, with reasoning.
+8. The initial traceability table and exact verification commands that will prove the approved slice is complete.
 
-Do not scaffold the entire architecture in the first step. After review, implement one complete vertical slice at a time and verify each slice before continuing.
+Do not scaffold the entire architecture in the first step. Stop after this response unless the user already authorized autonomous execution through a named milestone. After explicit approval, implement one complete vertical slice at a time, prove it against the traceability table, report the verification evidence, and only then continue.
